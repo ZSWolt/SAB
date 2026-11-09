@@ -103,7 +103,7 @@ const WEB_SEARCH: BetaToolUnion = {
   type: 'web_search_20260209',
   name: 'web_search',
   max_uses: 8,
-  user_location: { type: 'approximate', country: 'IL', timezone: 'Asia/Jerusalem' },
+  // No user_location: web search rejects country "IL". The prompt says the student is in Israel.
 };
 
 function isAnswer(a: unknown): a is Answer {

@@ -173,7 +173,9 @@ try {
   console.log('✓ missing-answer warning, and "complete the missing" answers only that field');
   const userText = req.body.messages[0].content.map((c) => c.text ?? '').join('\n');
   assert.ok(userText.includes('הכלה יצאה לצוד פרפרים'), 'story sent');
-  assert.ok(req.body.tools.some((t) => t.type === 'web_search_20260209'), 'web search tool sent');
+  const ws = req.body.tools.find((t) => t.type === 'web_search_20260209');
+  assert.ok(ws, 'web search tool sent');
+  assert.equal(ws.user_location, undefined, 'no user_location (the API rejects country IL)');
   assert.equal(req.body.thinking.type, 'adaptive');
   assert.equal(req.body.fallbacks, 'default');
   assert.ok(String(req.headers['anthropic-beta']).includes('server-side-fallback-2026-07-01'));
