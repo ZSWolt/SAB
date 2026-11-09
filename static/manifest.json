@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "SAB – עוזר משימות",
+  "version": "0.1.0",
+  "description": "קורא את המשימה בדף (כולל חלונות קופצים ובר הסיפור), עונה עם Claude ומקורות אמינים, וממלא את התשובות.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "tabs", "scripting", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": true,
+      "match_origin_as_fallback": true
+    }
+  ],
+  "action": { "default_title": "SAB – פתח/סגור את העוזר" },
+  "options_page": "options.html",
+  "icons": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "commands": {
+    "toggle-panel": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "פתח/סגור את העוזר"
+    },
+    "solve": {
+      "suggested_key": { "default": "Alt+Shift+A" },
+      "description": "קרא את הדף ופתור"
+    },
+    "fill": {
+      "suggested_key": { "default": "Alt+Shift+F" },
+      "description": "מלא את התשובות בדף"
+    }
+  }
+}

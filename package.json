@@ -1,0 +1,24 @@
+{
+  "name": "sab-school-helper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension that reads school assignments and answers them with Claude",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "e2e": "node tests/e2e/run.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.7",
+    "esbuild": "^0.28.2",
+    "jsdom": "^31.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAB – הגדרות</title>
+<style>
+  :root { --bg:#f9fafb; --fg:#111827; --muted:#6b7280; --line:#e5e7eb; --accent:#4f46e5; --card:#fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0b1120; --fg:#f3f4f6; --muted:#9ca3af; --line:#374151; --accent:#818cf8; --card:#111827; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:"Segoe UI",Arial,sans-serif; font-size:15px; }
+  main { max-width:640px; margin:32px auto; padding:0 16px; }
+  h1 { font-size:22px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  label { display:block; font-weight:600; margin:12px 0 6px; }
+  input[type=text], input[type=password], select, textarea { width:100%; box-sizing:border-box; padding:9px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); font-size:14px; }
+  textarea { min-height:80px; }
+  .hint { color:var(--muted); font-size:13px; margin-top:4px; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:12px; flex-wrap:wrap; }
+  button { padding:9px 16px; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:#fff; font-size:14px; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--accent); }
+  .check { display:flex; gap:8px; align-items:center; font-weight:400; }
+  #status { font-size:14px; }
+  kbd { background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:1px 6px; font-size:13px; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>⚡ SAB – עוזר משימות · הגדרות</h1>
+
+  <div class="card">
+    <label for="apiKey">מפתח API של Claude</label>
+    <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off">
+    <div class="hint">משיגים ב-<a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a> → API Keys. המפתח נשמר רק במחשב שלך (chrome.storage) ונשלח רק ל-Anthropic.</div>
+
+    <label for="model">מודל</label>
+    <select id="model"></select>
+
+    <label for="effort">רמת מאמץ</label>
+    <select id="effort">
+      <option value="medium">בינונית – מהיר יותר</option>
+      <option value="high">גבוהה (מומלץ)</option>
+      <option value="xhigh">גבוהה מאוד – לשאלות קשות</option>
+      <option value="max">מקסימלית – הכי מדויק, הכי איטי ויקר</option>
+    </select>
+
+    <label for="answerLength">אורך תשובות</label>
+    <select id="answerLength">
+      <option value="short">קצר</option>
+      <option value="normal">רגיל – לפי מה שהשאלה דורשת</option>
+      <option value="long">מפורט</option>
+    </select>
+
+    <label class="check"><input id="autoFill" type="checkbox"> למלא אוטומטית את התשובות בדף כשהן מוכנות (בלי לשלוח)</label>
+
+    <label for="extraInstructions">הוראות קבועות ל-AI (לא חובה)</label>
+    <textarea id="extraInstructions" placeholder='למשל: "אני לומד 5 יח"ל היסטוריה", "תכתוב קצת פחות מושלם, כמו תלמיד"'></textarea>
+
+    <details><summary class="hint">מתקדם</summary>
+      <label for="apiBaseUrl">כתובת API (לבדיקות בלבד)</label>
+      <input id="apiBaseUrl" type="text" placeholder="ריק = https://api.anthropic.com">
+    </details>
+
+    <div class="row">
+      <button id="save">שמור</button>
+      <button id="test" class="secondary">בדוק חיבור</button>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <b>קיצורי מקלדת</b>
+    <div class="hint" style="line-height:2">
+      <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> פתח/סגור את העוזר (גם אחרי שהסתרת את הכפתור)<br>
+      <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> קרא את הדף ופתור<br>
+      <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> מלא את התשובות בדף<br>
+      לשינוי: <a href="#" id="shortcuts">chrome://extensions/shortcuts</a>
+    </div>
+  </div>
+</main>
+<script type="module" src="options.js"></script>
+</body>
+</html>

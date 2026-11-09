@@ -1,0 +1,13 @@
+<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>משימה בספרות</title></head>
+<body>
+  <h1>משימה: "הכלה ומצוד הפרפרים"</h1>
+  <aside class="story-drawer" hidden><h3>הכלה ומצוד הפרפרים</h3><p id="story"></p></aside>
+  <div class="question"><p>שאלה 1: תאר את דמות הכלה.</p><textarea id="q1"></textarea></div>
+  <fieldset><legend>שאלה 2: מי כתב את הסיפור?</legend>
+    <label><input type="radio" name="q2" id="q2a"> ביאליק</label>
+    <label><input type="radio" name="q2" id="q2b"> עגנון</label>
+  </fieldset>
+  <iframe id="frame" src="__FRAME__" style="width:400px;height:200px"></iframe>
+  <button id="openTask" onclick="window.open('/popup.html','task','width=600,height=500')">פתח משימה בחלון</button>
+  <script>document.getElementById('story').textContent = 'הכלה יצאה לצוד פרפרים בשדה. '.repeat(60);</script>
+</body></html>
