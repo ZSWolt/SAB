@@ -1,12 +1,12 @@
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { buildContent, collectStories, reviewSystemPrompt, systemPrompt, type PdfBlock, type StoryBlock } from '../ai/prompt';
 import { reviewWithClaude, solveWithClaude, SolveError, testKey } from '../ai/claude';
-import { checkCoverage, mergeResults } from './coverage';
+import { checkCoverage, enrich, mergeResults } from './coverage';
 import { fetchDocument } from './documents';
 import { addCost, deleteTask, fieldsHash, findPage, getTask, listTasks, previousPagesSummary, savePage, taskKey } from './tasks';
 import { testGeminiKey, watchVideoCached } from '../ai/gemini';
 import { getSettings } from '../shared/settings';
-import type { DocumentRef, FillItem, FillOutcome, FrameSnapshot, PortMessage, SolveRequest, SolveResult, TaggedSnapshot } from '../shared/types';
+import type { DocumentRef, FillItem, FillOutcome, FrameSnapshot, PortMessage, SolveRequest, SolveResult, StepId, StepState, TaggedSnapshot } from '../shared/types';
 
 // ---------- frames ----------
 
@@ -148,17 +148,22 @@ function groupByFrame(items: FillItem[]) {
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const tabId = sender.tab?.id;
-  if (tabId === undefined) {
-    if (msg?.type === 'test-key') getSettings().then((s) => testKey({ ...s, ...msg.settings })).then(reply);
-    if (msg?.type === 'test-gemini') getSettings().then((s) => testGeminiKey({ ...s, ...msg.settings })).then(reply);
-    return msg?.type === 'test-key' || msg?.type === 'test-gemini';
+  // key checks come from the options page and from the panel's first-run "connect Claude" card
+  if (msg?.type === 'test-key') {
+    getSettings().then((s) => testKey({ ...s, ...msg.settings })).then(reply);
+    return true;
   }
+  if (msg?.type === 'test-gemini') {
+    getSettings().then((s) => testGeminiKey({ ...s, ...msg.settings })).then(reply);
+    return true;
+  }
+  if (tabId === undefined) return false;
   (async () => {
     switch (msg?.type) {
       case 'scan': {
         const opener = await openerOf(tabId);
-        const { readAllPages } = await getSettings();
-        return { snapshots: await collect(tabId, readAllPages), opener: opener !== null ? await collect(opener, false) : [] };
+        // Quick look without clicking through pages: free, and safe to run while a solve is going on.
+        return { snapshots: await collect(tabId, false), opener: opener !== null ? await collect(opener, false) : [] };
       }
       case 'fill': {
         const out: FillOutcome[] = [];
@@ -179,7 +184,20 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       }
       case 'structure':
         return (await inAllFrames<object>(tabId, '__sabStructure').catch(() => [])).map((r) => ({ frameId: r.frameId, ...r.result }));
+      case 'walk-progress': {
+        const p = msg as { page: number; total: number; waiting: boolean };
+        livePorts.get(tabId)?.({
+          type: 'step',
+          id: 'pages',
+          state: p.waiting ? 'pause' : 'run',
+          label: `עמוד ${p.page} מתוך ${p.total}`,
+          meta: p.waiting ? 'מחכה שתחזור ללשונית' : 'קורא',
+        });
+        return true;
+      }
       case 'capture':
+        // only the visible tab can be captured: if the student switched away, skip instead of capturing another tab
+        if (!sender.tab?.active) return { dataUrl: null };
         try {
           return { dataUrl: await chrome.tabs.captureVisibleTab(sender.tab!.windowId, { format: 'jpeg', quality: 75 }) };
         } catch {
@@ -211,6 +229,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 // ---------- solving (long-lived port keeps the service worker alive while streaming) ----------
 
 const MAX_DOCS = 3;
+/** Solve ports by tab, so page-walk progress from the content script reaches the right panel. */
+const livePorts = new Map<number, (m: PortMessage) => void>();
+
 
 async function readDocuments(refs: DocumentRef[], signal: AbortSignal, post: (m: PortMessage) => void) {
   const pdfs: PdfBlock[] = [];
@@ -253,6 +274,8 @@ chrome.runtime.onConnect.addListener((port) => {
     abort.abort();
   });
   const post = (m: PortMessage) => alive && port.postMessage(m);
+  const step = (id: StepId, state: StepState, label: string, meta?: string) => post({ type: 'step', id, state, label, meta });
+  if (tabId !== undefined) livePorts.set(tabId, post);
   activeSolves++;
   // MV3 stops an idle service worker after ~30s; a pending fetch doesn't count as activity.
   const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000);
@@ -261,12 +284,11 @@ chrome.runtime.onConnect.addListener((port) => {
     if (tabId === undefined) return;
     try {
       const settings = await getSettings();
-      if (!settings.apiKey) {
-        chrome.runtime.openOptionsPage();
-        throw new SolveError('צריך להכניס מפתח API של Claude בהגדרות (נפתח לך עכשיו).');
-      }
-      post({ type: 'status', text: settings.readAllPages ? 'קורא את הדף וכל העמודים שלו' : 'קורא את הדף' });
+      if (!settings.apiKey) throw new SolveError('צריך לחבר את Claude: מדביקים מפתח API במסך הפתיחה או בהגדרות');
+      step('pages', 'run', 'קורא את הדף');
       const snaps = await collect(tabId, settings.readAllPages);
+      const pagesRead = Math.max(1, ...snaps.map((s) => s.pages ?? 1));
+      const markers = snaps.reduce((n, s) => n + (s.questionMarkers ?? 0), 0);
       const openerId = await openerOf(tabId);
       const opener = openerId !== null ? await collect(openerId, false) : [];
       const top = snaps.find((s) => s.isTop) ?? snaps[0];
@@ -275,6 +297,7 @@ chrome.runtime.onConnect.addListener((port) => {
       const hash = fieldsHash(snaps);
       const task = await getTask(key);
       const fields = snaps.reduce((n, s) => n + s.fields.length, 0);
+      step('pages', 'done', pagesRead > 1 ? `קרא ${pagesRead} עמודים` : 'קרא את הדף', `${Math.max(fields, markers)} שאלות`);
 
       // --- check me: grade what the student already wrote ---
       if (req.mode === 'review' && !snaps.some((s) => s.fields.some((f) => f.value?.trim()))) {
@@ -318,9 +341,15 @@ chrome.runtime.onConnect.addListener((port) => {
         pages: Math.max(1, ...snaps.map((s) => s.pages ?? 1)),
       });
 
+      if (stories.length || docRefs.length) step('story', 'run', 'סיפור ומסמכים', docRefs.length ? `${docRefs.length} מסמכים` : '');
       const docs = await readDocuments(docRefs, abort.signal, post);
       // Google Docs text joins the stories (keeps the cached block identical on later pages).
       const allStories = [...stories, ...docs.texts.filter((t) => !stories.some((s) => s.text === t.text))];
+      if (allStories.length || docs.pdfs.length) {
+        step('story', 'done', 'סיפור', storyFromMemory ? 'מעמוד קודם' : allStories[0]?.title?.slice(0, 40) || (docs.pdfs[0]?.title ?? ''));
+      } else {
+        step('story', 'skip', 'סיפור', docs.status.some((d) => !d.ok) ? 'המסמך לא נקרא' : 'לא נמצא');
+      }
 
       // --- videos: Gemini watches (picture + sound) and describes them ---
       const videoNotes: { url: string; text: string }[] = [];
@@ -328,12 +357,13 @@ chrome.runtime.onConnect.addListener((port) => {
       let videoCost = 0;
       if (videoUrls.length && !settings.geminiApiKey) {
         for (const url of videoUrls) videoStatus.push({ url, ok: false, message: 'אין מפתח Gemini בהגדרות, אז הסרטון לא נצפה' });
+        step('videos', 'skip', 'סרטון', 'אין מפתח Gemini');
       } else if (videoUrls.length) {
         const questions =
           snaps.flatMap((s) => s.fields.map((f) => f.context)).join('\n---\n') ||
           snaps.map((s) => s.fullText).join('\n').slice(0, 6000);
         for (const [i, url] of videoUrls.entries()) {
-          post({ type: 'status', text: `Gemini צופה בסרטון ${i + 1} מתוך ${videoUrls.length}. סרטון ארוך יכול לקחת דקה או שתיים` });
+          step('videos', 'run', videoUrls.length > 1 ? `סרטון ${i + 1} מתוך ${videoUrls.length}` : 'סרטון', 'Gemini צופה');
           try {
             const v = await watchVideoCached(settings, url, questions, abort.signal, (text) => post({ type: 'status', text }));
             videoNotes.push({ url, text: v.text });
@@ -343,6 +373,8 @@ chrome.runtime.onConnect.addListener((port) => {
             videoStatus.push({ url, ok: false, message: e instanceof Error ? e.message : String(e) });
           }
         }
+        const watched = videoStatus.filter((v) => v.ok).length;
+        step('videos', watched ? 'done' : 'fail', videoUrls.length > 1 ? `${videoUrls.length} סרטונים` : 'סרטון', watched === videoUrls.length ? 'נצפה' : `${watched} מתוך ${videoUrls.length} נצפו`);
       }
 
       const content = buildContent({
@@ -358,15 +390,26 @@ chrome.runtime.onConnect.addListener((port) => {
         onlyFields: req.onlyFields,
         screenshot: req.screenshot,
       });
+      let searches = 0;
       const callbacks = {
-        onSearch: (query: string) => post({ type: 'search', query }),
+        onSearch: (query: string) => {
+          searches++;
+          step('search', 'run', 'מחפש', query.slice(0, 48));
+          post({ type: 'search', query });
+        },
         onThinking: (text: string) => post({ type: 'thinking', text }),
         onStatus: (text: string) => post({ type: 'status', text }),
       };
-      post({ type: 'status', text: req.mode === 'review' ? 'Claude בודק את התשובות שלך' : 'Claude עובד על התשובות' });
+      step('write', 'run', req.mode === 'review' ? 'בודק את התשובות שלך' : 'כותב תשובות');
+      const finishSteps = () => {
+        if (searches) step('search', 'done', 'חיפש', `${searches} חיפושים`);
+        step('write', 'done', req.mode === 'review' ? 'בדק' : 'כתב');
+      };
 
       if (req.mode === 'review') {
         const review = await reviewWithClaude(settings, reviewSystemPrompt(settings), content, callbacks, abort.signal);
+        finishSteps();
+        review.items = enrich(review.items, snaps, true);
         review.costUsd += videoCost;
         await addCost(key, top?.title ?? '', pageUrl, review.costUsd);
         post({ type: 'review', review });
@@ -374,6 +417,9 @@ chrome.runtime.onConnect.addListener((port) => {
       }
 
       let result = await solveWithClaude(settings, systemPrompt(settings), content, callbacks, abort.signal);
+      finishSteps();
+      result.answers = enrich(result.answers, snaps);
+      if (markers > fields) result.questionGap = { markers, fields };
       result.videos = videoStatus;
       result.documents = docs.status;
       result.storyFromMemory = storyFromMemory;
@@ -397,6 +443,7 @@ chrome.runtime.onConnect.addListener((port) => {
     } catch (e) {
       post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     } finally {
+      if (tabId !== undefined && livePorts.get(tabId) === post) livePorts.delete(tabId);
       activeSolves = Math.max(0, activeSolves - 1);
       clearInterval(keepAlive);
       if (alive) port.disconnect();

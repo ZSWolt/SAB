@@ -1,4 +1,5 @@
 import { loadFonts } from '../content/ui/fonts';
+import { resolveTheme } from '../content/ui/store';
 import { DEFAULT_SETTINGS, GEMINI_MODELS, getSettings, MODELS, saveSettings, type Settings } from '../shared/settings';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -28,6 +29,15 @@ async function init() {
     if (el.type === 'checkbox') el.checked = Boolean(s[k]);
     else el.value = String(s[k] ?? '');
   }
+  const dark = window.matchMedia('(prefers-color-scheme: dark)');
+  const themeSel = $<HTMLSelectElement>('theme');
+  const applyTheme = () => (document.documentElement.dataset.theme = resolveTheme(themeSel.value as Settings['theme'], dark.matches));
+  applyTheme();
+  themeSel.addEventListener('change', async () => {
+    applyTheme();
+    await saveSettings({ theme: themeSel.value as Settings['theme'] });
+  });
+  dark.addEventListener('change', applyTheme);
   const status = $('status');
   const saved = $('saved');
   $('save').addEventListener('click', async () => {

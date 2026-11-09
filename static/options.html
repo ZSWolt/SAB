@@ -6,24 +6,29 @@
 <title>SAB הגדרות</title>
 <!-- Design approach: unslop by Damir Sokolovsky (@heydamir), CC BY 4.0 -->
 <style>
-  :root {
+  :root, [data-theme="notebook"] {
     --bg: #fafafa; --card: #ffffff; --raised: #f4f4f5; --line: rgba(23, 23, 23, 0.08); --line-strong: rgba(23, 23, 23, 0.14);
-    --text: #171717; --text-2: #525252; --muted: #737373;
+    --text: #171717; --text-2: #525252; --muted: #6b6b6b;
     --ink: #1d4ed8; --ink-hover: #1e40af; --on-ink: #ffffff; --sel: #1d4ed8; --ring: rgba(29, 78, 216, 0.14);
-    --pos: #16a34a; --neg: #dc2626;
+    --pos: #15803d; --neg: #b91c1c; color-scheme: light;
+  }
+  [data-theme="focus"] {
+    --bg: #111113; --card: #18181b; --raised: #232327; --line: rgba(242, 242, 243, 0.08); --line-strong: rgba(242, 242, 243, 0.16);
+    --text: #f2f2f3; --text-2: #b4b4ba; --muted: #8e8e95;
+    --ink: #7cc4ff; --ink-hover: #a5d6ff; --on-ink: #0b1220; --sel: #7cc4ff; --ring: rgba(124, 196, 255, 0.2);
+    --pos: #4cc38a; --neg: #ff6b6b; color-scheme: dark;
+  }
+  [data-theme="school"] {
+    --bg: #fbfaf8; --card: #ffffff; --raised: #f4f2ee; --line: rgba(28, 25, 23, 0.08); --line-strong: rgba(28, 25, 23, 0.15);
+    --text: #1c1917; --text-2: #57534e; --muted: #71695f;
+    --ink: #c2410c; --ink-hover: #9a3412; --on-ink: #ffffff; --sel: #c2410c; --ring: rgba(194, 65, 12, 0.14);
+    --pos: #15803d; --neg: #b42318; color-scheme: light;
+  }
+  :root {
     --ease: cubic-bezier(0.22, 1, 0.36, 1);
     --font: "SAB Plex Hebrew", "IBM Plex Sans Hebrew", "Segoe UI", Arial, sans-serif;
     --mono: "SAB Plex Mono", "IBM Plex Mono", ui-monospace, Consolas, monospace;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #141415; --card: #19191b; --raised: #232325; --line: rgba(237, 237, 237, 0.08); --line-strong: rgba(237, 237, 237, 0.14);
-      --text: #ededed; --text-2: #a1a1a6; --muted: #85858b;
-      --ink: #e9e9ea; --ink-hover: #ffffff; --on-ink: #141415; --sel: #7aa2ff; --ring: rgba(122, 162, 255, 0.2);
-      --pos: #4cc38a; --neg: #e5484d;
-    }
-  }
-  :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 20px; }
   main { max-width: 640px; margin: 0 auto; padding: 40px 24px 96px; display: flex; flex-direction: column; gap: 16px; }
@@ -120,12 +125,25 @@
   </section>
 
   <section>
+    <h2>מראה</h2>
+    <div class="field">
+      <label for="theme">עיצוב</label>
+      <select id="theme">
+        <option value="auto">אוטומטי: מחברת ביום, כהה כשהמחשב במצב כהה</option>
+        <option value="notebook">מחברת: אפור ודיו כחול</option>
+        <option value="focus">כהה לריכוז</option>
+        <option value="school">בית ספר: בהיר עם כתום</option>
+      </select>
+    </div>
+  </section>
+
+  <section>
     <h2>תשובות</h2>
     <div class="field">
       <label for="answerLength">אורך</label>
       <select id="answerLength">
         <option value="short">קצר</option>
-        <option value="normal">לפי מה שהשאלה דורשת</option>
+        <option value="normal">הכי קצר שעונה על כל השאלה</option>
         <option value="long">מפורט</option>
       </select>
     </div>

@@ -4,6 +4,8 @@ import { describeFields, findFieldGroups } from './fields';
 import { findStory } from './story';
 import { findVideos } from './videos';
 import { findDocuments } from './documents';
+import { findPagination } from './pages';
+import { isRendered } from '../text';
 
 const MAX_PAGE_TEXT = 60000;
 
@@ -48,5 +50,29 @@ export function extractFrame(doc: Document = document): FrameSnapshot {
     fullText: found?.element === doc.body ? '' : fullText,
     videos: findVideos(doc),
     documents: findDocuments(doc),
+    pagesFound: findPagination(doc)?.buttons.length,
+    questionMarkers: countQuestionMarkers(doc),
   };
+}
+
+const CHECK_RE = /^(send check|check|בדוק|בדיקה|שלח|שלח תשובה|submit answer)$/i;
+const HEADING_RE = /^שאלה\s*(\d{1,2}|[א-ת]['׳]?)\b/;
+
+/**
+ * How many questions the page seems to have: "check" buttons (one per question on CET-like sites)
+ * or "שאלה 3" headings. Used only to warn when fewer fields were found than that.
+ */
+export function countQuestionMarkers(doc: Document = document): number {
+  let checks = 0;
+  doc.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"]').forEach((b) => {
+    const label = ((b as HTMLInputElement).value || b.textContent || '').trim();
+    if (CHECK_RE.test(label) && isRendered(b)) checks++;
+  });
+  const headings = new Set<string>();
+  doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p, div, span, strong, b, legend, label').forEach((el) => {
+    const own = Array.from(el.childNodes).filter((c) => c.nodeType === Node.TEXT_NODE).map((c) => c.nodeValue ?? '').join('').trim();
+    const m = own.match(HEADING_RE);
+    if (m && isRendered(el)) headings.add(m[1]);
+  });
+  return Math.max(checks, headings.size);
 }

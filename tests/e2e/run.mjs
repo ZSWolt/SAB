@@ -81,6 +81,10 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname.startsWith('/v1/models/')) {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    return res.end(JSON.stringify({ id: 'claude-opus-5-5', type: 'model', display_name: 'Claude Opus 5.5', created_at: '2026-01-01T00:00:00Z' }));
+  }
   if (url.pathname === '/v1/messages') {
     let raw = '';
     req.on('data', (c) => (raw += c));
@@ -146,12 +150,11 @@ try {
   await page.waitForSelector('#sab-helper-host >> .panel.open');
   console.log('✓ hidden button comes back with Alt+Shift+S');
 
-  // scan
-  await page.click('#sab-helper-host >> text=בדוק מה זוהה');
-  await page.waitForSelector('#sab-helper-host >> text=/נמצאו 3 שדות/');
-  await page.waitForSelector('#sab-helper-host >> text=/זוהה סיפור/');
-  await page.waitForSelector('#sab-helper-host >> text=/1 סרטוני יוטיוב/');
-  await shot(page, '1-task');
+  // quick look runs by itself when the panel opens
+  await page.waitForSelector('#sab-helper-host >> .scan >> text=/3 שאלות/');
+  await page.click('#sab-helper-host >> .collapse-h');
+  await page.waitForSelector('#sab-helper-host >> text=/סיפור: /');
+  await page.waitForSelector('#sab-helper-host >> text=/סרטון יוטיוב אחד/');
   console.log('✓ scan: 3 fields (one in a cross-origin iframe) + hidden story');
 
   // solve
@@ -163,10 +166,10 @@ try {
   assert.equal(Buffer.from(doc.source.data, 'base64').toString().slice(0, 5), '%PDF-');
   const storyBlock = req.body.messages[0].content.find((c) => c.type === 'text' && c.text.includes('<story'));
   assert.deepEqual(storyBlock.cache_control, { type: 'ephemeral' }, 'story block is cached');
-  await page.waitForSelector('#sab-helper-host >> text=/נקרא: /');
+  await page.waitForSelector('#sab-helper-host >> text=/השתמשתי ב: מסמך/');
   console.log('✓ PDF linked in the task is downloaded and sent; story block marked for caching');
 
-  await page.waitForSelector('#sab-helper-host >> text=/שדה אחד לא קיבל תשובה/');
+  await page.waitForSelector('#sab-helper-host >> text=/שאלה אחת לא קיבלה תשובה/');
   await shot(page, '2-missing');
   await page.click('#sab-helper-host >> text=השלם את החסר');
   await page.waitForSelector('#sab-helper-host >> text=/מוכן · 3 תשובות/', { timeout: 20000 });
@@ -182,14 +185,14 @@ try {
   assert.equal(req.body.thinking.type, 'adaptive');
   assert.equal(req.body.fallbacks, 'default');
   assert.ok(String(req.headers['anthropic-beta']).includes('server-side-fallback-2026-07-01'));
-  await page.waitForSelector('#sab-helper-host >> text=עגנון פרס נובל שנה');
+  await page.waitForSelector('#sab-helper-host >> text=/חיפוש אחד/');
   const g = geminiRequests.at(-1);
   assert.ok(g, 'gemini called');
   assert.equal(g.headers['x-goog-api-key'], 'AIza-test');
   assert.deepEqual(g.body.input[0], { type: 'video', uri: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' });
   assert.ok(userText.includes('<video url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"'), 'video description sent to Claude');
   assert.ok(userText.includes('כתבתי את הסיפור בקיץ'));
-  await page.waitForSelector('#sab-helper-host >> text=/נצפה: /');
+  await page.waitForSelector('#sab-helper-host >> text=/סרטון אחד/');
   console.log('✓ video: Gemini watched the YouTube video and Claude got the description');
   console.log('✓ solve: story + web search + answers shown');
   await shot(page, '3-answers');
@@ -209,7 +212,7 @@ try {
 
   // same page again → saved answers, no new request
   const before = requests.length;
-  await page.click('#sab-helper-host >> .tab >> text=משימה');
+  await page.click('#sab-helper-host >> text=חזרה למסך הפתיחה');
   await page.click('#sab-helper-host >> .btn.primary.big');
   await page.waitForSelector('#sab-helper-host >> text=/כבר פתרת את הדף הזה/');
   assert.equal(requests.length, before, 'no API call for an already solved page');
@@ -231,7 +234,7 @@ try {
   console.log('✓ page 2: story + PDF + earlier answers remembered from page 1');
 
   // history tab
-  await page2.click('#sab-helper-host >> .tab >> text=היסטוריה');
+  await page2.click('#sab-helper-host >> button[title="היסטוריה"]');
   await page2.waitForSelector('#sab-helper-host >> text=/הוצאה החודש/');
   await page2.waitForSelector('#sab-helper-host >> .hist >> text=משימה בספרות');
   await shot(page2, '5-history');
@@ -239,13 +242,16 @@ try {
 
   // check me
   await page2.fill('#q5', 'הפרפרים מסמלים חופש');
-  await page2.click('#sab-helper-host >> .tab >> text=משימה');
-  await page2.click('#sab-helper-host >> text=/בדוק אותי/');
-  await page2.waitForSelector('#sab-helper-host >> text=/ציון ממוצע: 55/', { timeout: 20000 });
+  await page2.click('#sab-helper-host >> button[title="חזרה"]');
+  await page2.click('#sab-helper-host >> text=חזרה למסך הפתיחה');
+  await page2.click('#sab-helper-host >> .btn.big.review');
+  await page2.waitForSelector('#sab-helper-host >> text=/ציון ממוצע 55/', { timeout: 20000 });
+  await page2.waitForSelector('#sab-helper-host >> .reviews >> text=/מה הקשר בין הפרפרים לכלה/');
+  await page2.waitForSelector('#sab-helper-host >> text=/כתבת: הפרפרים מסמלים חופש/');
+  console.log('✓ check-me shows the real question text and what the student wrote');
   const rv = requests.at(-1).body;
   assert.ok(rv.tools.some((t) => t.name === 'submit_review'));
   assert.ok(rv.messages[0].content.map((c) => c.text ?? '').join('\n').includes('הפרפרים מסמלים חופש'));
-  await page2.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelector('details').open = true);
   await shot(page2, '4-review');
   await page2.click('#sab-helper-host >> text=/החלף בגרסה המשופרת/');
   await page2.waitForFunction(() => document.querySelector('#q5').value === 'תשובה משופרת מהבדיקה');
@@ -256,6 +262,10 @@ try {
   await page.evaluate(() => document.querySelector('.pager span[data-p="2"]').click()); // the student is on page 2
   await page.waitForFunction(() => window.__cur === 2);
   await page.keyboard.press('Alt+Shift+A');
+  await page.waitForSelector('#sab-helper-host >> .step >> text=/עמוד \\d מתוך 3/', { timeout: 10000 });
+  await page.waitForTimeout(400);
+  await shot(page, '2-working');
+  console.log('✓ working screen shows live page progress ("עמוד N מתוך 3")');
   await page.waitForSelector('#sab-helper-host >> text=/מוכן · 3 תשובות/', { timeout: 30000 });
   const pagedText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
   for (const t of ['מה שם הגיבור', 'מי כתב את הסיפור', 'באיזו שנה נכתב', 'עמוד 3 מתוך 3']) assert.ok(pagedText.includes(t), t);
@@ -284,6 +294,64 @@ try {
   assert.ok(popupText.includes('<opener_window'), 'opener window context sent');
   assert.ok(popupText.includes('הכלה יצאה לצוד פרפרים'), 'story from opener sent');
   console.log('✓ popup window: panel injected, Alt+Shift+A solves, story from the opening window included');
+  // theme switch from the settings sheet
+  await page.keyboard.press('Alt+Shift+S');
+  await page.click('#sab-helper-host >> button[title="הגדרות"]');
+  await page.click('#sab-helper-host >> .swatch >> text=כהה');
+  await page.waitForSelector('#sab-helper-host >> .root[data-theme="focus"]', { state: 'attached' });
+  await page.click('#sab-helper-host >> .swatch >> text=בית ספר');
+  await page.waitForSelector('#sab-helper-host >> .root[data-theme="school"]', { state: 'attached' });
+  console.log('✓ theme switch in the settings sheet (focus, school)');
+
+  // screenshots of every look
+  if (process.env.SHOT_DIR) {
+    await page.setViewportSize({ width: 1100, height: 760 });
+    for (const theme of ['notebook', 'focus', 'school']) {
+      await sw.evaluate(async (t) => {
+        const { settings } = await chrome.storage.local.get('settings');
+        await chrome.storage.local.set({ settings: { ...settings, theme: t } });
+      }, theme);
+      await page.waitForSelector(`#sab-helper-host >> .root[data-theme="${theme}"]`, { state: 'attached' });
+      await page.click('#sab-helper-host >> button[title="חזרה"]').catch(() => {});
+      await page.click('#sab-helper-host >> text=חזרה למסך הפתיחה').catch(() => {});
+      await shot(page, `t-${theme}-1-idle`);
+      await page.click('#sab-helper-host >> text=/הצג את התשובות האחרונות/');
+      await page.click('#sab-helper-host >> .qrow >> nth=1');
+      await shot(page, `t-${theme}-2-results`);
+      for (const sheet of ['סיפור', 'היסטוריה', 'הגדרות']) {
+        await page.click(`#sab-helper-host >> button[title="${sheet}"]`);
+        await page.waitForTimeout(200);
+        await shot(page, `t-${theme}-3-${sheet}`);
+        await page.click('#sab-helper-host >> button[title="חזרה"]');
+      }
+    }
+    await sw.evaluate(async () => {
+      const { settings } = await chrome.storage.local.get('settings');
+      await chrome.storage.local.set({ settings: { ...settings, theme: 'auto' } });
+    });
+  }
+
+  // first run: no key → "connect Claude" card, paste the key in the panel
+  await sw.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({ settings: { ...settings, apiKey: '' } });
+  });
+  const fresh = await ctx.newPage();
+  await fresh.goto(`http://localhost:${port}/page2.html`);
+  await fresh.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await fresh.keyboard.press('Alt+Shift+S');
+  await fresh.waitForSelector('#sab-helper-host >> text=חבר את Claude');
+  assert.equal(await fresh.isDisabled('#sab-helper-host >> .btn.primary.big'), true, 'solve is disabled without a key');
+  await fresh.waitForTimeout(400);
+  await shot(fresh, '0-connect');
+  await fresh.fill('#sab-helper-host >> .connect input', 'sk-ant-test');
+  await fresh.click('#sab-helper-host >> text=שמור ובדוק');
+  await fresh.waitForSelector('#sab-helper-host >> text=חבר את Claude', { state: 'detached' });
+  assert.equal(await fresh.isDisabled('#sab-helper-host >> .btn.primary.big'), false);
+  assert.equal(await sw.evaluate(async () => (await chrome.storage.local.get('settings')).settings.apiKey), 'sk-ant-test');
+  console.log('✓ first run: connect Claude from the panel, key checked and saved');
+  await fresh.close();
+
   if (process.env.SHOT_DIR) {
     const id = new URL(sw.url()).host;
     const op = await ctx.newPage();

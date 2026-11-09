@@ -1,6 +1,6 @@
 import type { FieldInfo, FieldKind } from '../../shared/types';
-import { getText, isRendered, normalize } from '../text';
-import { findCustomChoices } from './choices';
+import { deepQueryAll, getText, isRendered, normalize } from '../text';
+import { findCustomChoices, stripBadge } from './choices';
 
 /** A field group found in the DOM: one text box, or one set of radio/checkbox options. */
 export interface FieldGroup {
@@ -73,10 +73,11 @@ export function findFieldGroups(doc: Document = document): FieldGroup[] {
   const radioGroups = new Map<string, Element[]>();
   const roleGroups = new Map<Element, { kind: FieldKind; els: Element[] }>();
 
-  const all = doc.querySelectorAll(
+  const all = deepQueryAll(
+    doc,
     'input, textarea, select, [contenteditable], [role="textbox"], [role="radio"], [role="checkbox"]',
   );
-  for (const el of Array.from(all)) {
+  for (const el of all) {
     if (seen.has(el) || inIgnoredArea(el)) continue;
     const tag = el.tagName;
     const role = el.getAttribute('role');
@@ -256,14 +257,14 @@ export function describeFields(groups: FieldGroup[]): FieldInfo[] {
 }
 
 export function findField(id: string, doc: Document = document): FieldGroup | null {
-  const single = doc.querySelector(`[${ID_ATTR}="${CSS.escape(id)}"]`);
+  const single = deepQueryAll(doc, `[${ID_ATTR}="${CSS.escape(id)}"]`)[0];
   if (single) {
     const tag = single.tagName;
     const kind: FieldKind =
       tag === 'TEXTAREA' ? 'textarea' : tag === 'SELECT' ? 'select' : tag === 'INPUT' ? 'text' : 'richtext';
     return { id, kind, elements: [single] };
   }
-  const options = Array.from(doc.querySelectorAll(`[${GROUP_ATTR}="${CSS.escape(id)}"]`));
+  const options = deepQueryAll(doc, `[${GROUP_ATTR}="${CSS.escape(id)}"]`);
   if (!options.length) return null;
   const first = options[0];
   const kind: FieldKind =
@@ -272,7 +273,7 @@ export function findField(id: string, doc: Document = document): FieldGroup | nu
       : 'radio';
   const custom = !(first instanceof HTMLInputElement) && !first.getAttribute('role');
   const labels = custom
-    ? options.map((o, i) => getText(o).trim().replace(new RegExp(`^${i + 1}\\s*`), '').trim())
+    ? options.map((o) => stripBadge(getText(o)))
     : options.map(optionLabel);
   return { id, kind, elements: options, optionLabels: labels };
 }

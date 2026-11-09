@@ -52,6 +52,10 @@ export interface FrameSnapshot {
   documents: DocumentRef[];
   /** How many pages were read (page buttons at the bottom of the task). */
   pages?: number;
+  /** Page buttons seen on the page, even when the pages weren't walked. */
+  pagesFound?: number;
+  /** Signs of questions in the page (check buttons, "שאלה N" headings), to catch questions without a field. */
+  questionMarkers?: number;
 }
 
 /** A frame snapshot after the background tagged it with its frame id. */
@@ -67,6 +71,9 @@ export interface Answer {
   field_id: string | null;
   /** For choice fields: the exact option label to pick. */
   option: string | null;
+  /** Filled in by the extension from the page (not by Claude): the field's question and page. */
+  questionText?: string;
+  page?: number;
 }
 
 export interface Source {
@@ -90,6 +97,8 @@ export interface SolveResult {
   duplicates?: string[];
   /** The story came from an earlier page of the same task. */
   storyFromMemory?: boolean;
+  /** More question signs in the page than fields found. */
+  questionGap?: { markers: number; fields: number };
   /** Approximate cost in USD. */
   costUsd: number;
 }
@@ -126,6 +135,10 @@ export interface ReviewItem {
   correct: string;
   missing: string;
   improved: string;
+  /** Filled in by the extension from the page: the question, the student's answer and the page. */
+  questionText?: string;
+  studentAnswer?: string;
+  page?: number;
 }
 
 export interface ReviewResult {
@@ -148,6 +161,9 @@ export interface TaskSummary {
   updatedAt: number;
 }
 
+export type StepId = 'pages' | 'story' | 'videos' | 'search' | 'write';
+export type StepState = 'wait' | 'run' | 'done' | 'pause' | 'fail' | 'skip';
+
 /** Messages the background sends back on the solve port. */
 export type PortMessage =
   | { type: 'status'; text: string }
@@ -155,6 +171,7 @@ export type PortMessage =
   | { type: 'thinking'; text: string }
   | { type: 'scan'; fields: number; story: boolean; frames: number; opener: boolean; videos: number; documents: number; pages: number }
   | { type: 'cached'; result: SolveResult; at: number }
+  | { type: 'step'; id: StepId; state: StepState; label: string; meta?: string }
   | { type: 'review'; review: ReviewResult }
   | { type: 'result'; result: SolveResult }
   | { type: 'error'; message: string };

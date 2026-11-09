@@ -2,7 +2,7 @@ import type { FillItem } from '../shared/types';
 import { extractFrame } from './extract';
 import { tryOpenStoryBar } from './extract/story';
 import { undoFill } from './fill';
-import { extractAllPages, fillAcrossPages } from './extract/pages';
+import { extractAllPages, fillAcrossPages, onWalkProgress } from './extract/pages';
 import { pageStructure } from './structure';
 import { Panel } from './ui/panel';
 
@@ -17,6 +17,16 @@ const api = {
   __sabStructure: () => pageStructure(),
 };
 Object.assign(globalThis, api);
+
+// While walking through the task's pages, tell the background which page we're on (and when we're
+// paused because the tab is in the background), so the panel can show it.
+onWalkProgress((p) => {
+  try {
+    chrome.runtime.sendMessage({ type: 'walk-progress', ...p }).catch(() => {});
+  } catch {
+    /* extension was updated */
+  }
+});
 
 const w = window as unknown as { __sabPanel?: Panel; __sabVersion?: string };
 const isTop = window === window.top;

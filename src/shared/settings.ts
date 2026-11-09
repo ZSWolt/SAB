@@ -11,6 +11,8 @@ export interface Settings {
   styleSample: string;
   /** Click through page buttons (1 2 3…) at the bottom of the task and read every page. */
   readAllPages: boolean;
+  /** Look of the panel: auto = notebook in light mode, focus (dark) in dark mode. */
+  theme: 'auto' | 'notebook' | 'focus' | 'school';
   /** Dev / tests only: point the SDK at another server. */
   apiBaseUrl: string;
   /** Google AI Studio key, used only to watch videos. Empty = videos are skipped. */
@@ -40,6 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   extraInstructions: '',
   styleSample: '',
   readAllPages: true,
+  theme: 'auto',
   apiBaseUrl: '',
   geminiApiKey: '',
   geminiModel: 'gemini-3.8-flash',

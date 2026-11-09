@@ -115,8 +115,75 @@ export function findPagination(doc: Document = document): Pagination | null {
   return { buttons: best.buttons, current: currentPage(best.buttons, best.container) };
 }
 
-/** Waits until the page stops changing (or maxMs). */
-export function settle(doc: Document = document, quietMs = 400, maxMs = 4000): Promise<void> {
+// ---------- progress, visibility and a lock ----------
+
+export interface WalkProgress {
+  page: number;
+  total: number;
+  /** Paused because the tab is in the background (Chrome doesn't render hidden tabs). */
+  waiting: boolean;
+}
+let progressListener: ((p: WalkProgress) => void) | null = null;
+export function onWalkProgress(fn: ((p: WalkProgress) => void) | null) {
+  progressListener = fn;
+}
+const report = (p: WalkProgress) => {
+  try {
+    progressListener?.(p);
+  } catch {
+    /* ignore */
+  }
+};
+
+/**
+ * Resolves when the tab is visible. A hidden tab doesn't run requestAnimationFrame and throttles
+ * timers, so many sites never draw the next page there: reading it would give the old page.
+ */
+export function waitVisible(doc: Document = document, onWait?: () => void): Promise<void> {
+  if (doc.visibilityState !== 'hidden') return Promise.resolve();
+  onWait?.();
+  return new Promise((resolve) => {
+    const on = () => {
+      if (doc.visibilityState === 'hidden') return;
+      doc.removeEventListener('visibilitychange', on);
+      resolve();
+    };
+    doc.addEventListener('visibilitychange', on);
+  });
+}
+
+let chain: Promise<unknown> = Promise.resolve();
+/** Only one page walk (reading or filling) at a time, so two walks never click against each other. */
+export function withLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = chain.then(fn, fn);
+  chain = run.catch(() => {});
+  return run;
+}
+
+const LOADING_RE = /^(loading|טוען|נטען|please wait|רגע)[.…]*$/i;
+function loadingVisible(doc: Document): boolean {
+  if (doc.querySelector('[aria-busy="true"]')) return true;
+  for (const el of Array.from(doc.querySelectorAll('div, span, p, img'))) {
+    const label = el.tagName === 'IMG' ? '' : (el.textContent ?? '').trim();
+    const isLoading = el.tagName === 'IMG' ? /loading|spinner/i.test(el.getAttribute('alt') ?? '') : LOADING_RE.test(label);
+    if (isLoading && el.children.length === 0 && isRendered(el)) {
+      const r = (el as HTMLElement).getBoundingClientRect?.();
+      if (!r || r.width > 0 || r.height > 0) return true;
+    }
+  }
+  return false;
+}
+
+/** Waits until the page stops changing (or maxMs), and a little longer while "Loading…" shows. */
+export async function settle(doc: Document = document, quietMs = 400, maxMs = 8000): Promise<void> {
+  const start = Date.now();
+  await quiet(doc, quietMs, maxMs);
+  while (loadingVisible(doc) && Date.now() - start < Math.min(maxMs, 4000) + 2500) {
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
+function quiet(doc: Document, quietMs: number, maxMs: number): Promise<void> {
   return new Promise((resolve) => {
     let timer = setTimeout(done, Math.max(quietMs, 250));
     const hard = setTimeout(done, maxMs);
@@ -136,9 +203,13 @@ export function settle(doc: Document = document, quietMs = 400, maxMs = 4000): P
 
 /** Clicks page `page` (finding the buttons again, since they may have been rebuilt) and waits. */
 export async function goToPage(page: number, doc: Document = document): Promise<boolean> {
+  const first = findPagination(doc);
+  if (!first) return false;
+  await waitVisible(doc, () => report({ page, total: first.buttons.length, waiting: true }));
   const pg = findPagination(doc);
   const btn = pg?.buttons[page - 1];
   if (!pg || !btn) return false;
+  report({ page, total: pg.buttons.length, waiting: false });
   if (pg.current === page) return true;
   btn.click();
   await settle(doc);
@@ -150,7 +221,11 @@ function renumber(snap: FrameSnapshot, page: number): FrameSnapshot {
 }
 
 /** Reads every page of a paged task. Falls back to the current page only. */
-export async function extractAllPages(doc: Document = document): Promise<FrameSnapshot> {
+export function extractAllPages(doc: Document = document): Promise<FrameSnapshot> {
+  return withLock(() => walkAndRead(doc));
+}
+
+async function walkAndRead(doc: Document): Promise<FrameSnapshot> {
   const pg = findPagination(doc);
   if (!pg) return extractFrame(doc);
   const start = pg.current;
@@ -177,11 +252,16 @@ export async function extractAllPages(doc: Document = document): Promise<FrameSn
     videos: uniq(per.flatMap((s) => s.videos), (v) => v.url),
     documents: uniq(per.flatMap((s) => s.documents), (d) => d.url),
     pages: per.length,
+    questionMarkers: per.reduce((n, s) => n + (s.questionMarkers ?? 0), 0),
   };
 }
 
 /** Fills fields on several pages: goes to each page, finds its fields again by position, fills them. */
-export async function fillAcrossPages(items: FillItem[], doc: Document = document): Promise<FillOutcome[]> {
+export function fillAcrossPages(items: FillItem[], doc: Document = document): Promise<FillOutcome[]> {
+  return withLock(() => walkAndFill(items, doc));
+}
+
+async function walkAndFill(items: FillItem[], doc: Document): Promise<FillOutcome[]> {
   const paged = items.filter((i) => /^p\d+\.\d+$/.test(i.fieldId));
   const out: FillOutcome[] = fillFields(items.filter((i) => !paged.includes(i)), doc);
   if (!paged.length) return out;

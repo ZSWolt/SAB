@@ -32,6 +32,19 @@ export function isRendered(el: Element): boolean {
   return true;
 }
 
+/**
+ * querySelectorAll that also looks inside open shadow roots (web components), which the normal one
+ * skips. Results from shadow roots come after the light DOM ones.
+ */
+export function deepQueryAll(root: Document | ShadowRoot | Element, selector: string): Element[] {
+  const out = Array.from(root.querySelectorAll(selector));
+  root.querySelectorAll('*').forEach((el) => {
+    // never read our own panel (it lives in a shadow root too)
+    if (el.shadowRoot && el.id !== PANEL_HOST_ID) out.push(...deepQueryAll(el.shadowRoot, selector));
+  });
+  return out;
+}
+
 export function getText(root: Node, opts: TextOptions = {}): string {
   const out: string[] = [];
   let size = 0;
@@ -65,7 +78,17 @@ export function getText(root: Node, opts: TextOptions = {}): string {
     const block = node.nodeType === Node.ELEMENT_NODE && BLOCK_TAGS.has(el.tagName);
     const cell = node.nodeType === Node.ELEMENT_NODE && (el.tagName === 'TD' || el.tagName === 'TH');
     if (block) out.push('\n');
-    for (let c = node.firstChild; c; c = c.nextSibling) walk(c);
+    // web components: what's shown is the shadow tree, with light children placed into its <slot>s
+    const shadow = node.nodeType === Node.ELEMENT_NODE ? el.shadowRoot : null;
+    if (shadow) {
+      for (let c = shadow.firstChild; c; c = c.nextSibling) walk(c);
+    } else if (node.nodeType === Node.ELEMENT_NODE && el.tagName === 'SLOT') {
+      const assigned = (el as HTMLSlotElement).assignedNodes?.({ flatten: true }) ?? [];
+      if (assigned.length) assigned.forEach(walk);
+      else for (let c = node.firstChild; c; c = c.nextSibling) walk(c);
+    } else {
+      for (let c = node.firstChild; c; c = c.nextSibling) walk(c);
+    }
     if (block) out.push('\n');
     if (cell) out.push(' | ');
   };

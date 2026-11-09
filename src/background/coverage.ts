@@ -29,3 +29,21 @@ export function mergeResults(prev: SolveResult, next: SolveResult): SolveResult 
   };
 }
 
+
+/** The question line of a field's context (skips a short "שאלה 3" line before it). */
+export function questionLine(context: string): string {
+  const lines = context.split('\n').map((l) => l.trim()).filter((l) => l.length > 1);
+  let q = lines[0] ?? '';
+  if (q.length < 14 && lines[1]) q = `${q} ${lines[1]}`;
+  return q.length > 180 ? `${q.slice(0, 177)}…` : q;
+}
+
+/** Adds the real question text, page and (for check-me) the student's answer, from the page. */
+export function enrich<T extends { field_id: string | null }>(items: T[], snaps: TaggedSnapshot[], withValue = false): T[] {
+  const map = new Map<string, TaggedSnapshot["fields"][number]>(snaps.flatMap((s) => s.fields.map((f) => [`${s.frameId}:${f.id}`, f] as [string, TaggedSnapshot["fields"][number]])));
+  return items.map((it) => {
+    const f = it.field_id ? map.get(it.field_id) : undefined;
+    if (!f) return it;
+    return { ...it, questionText: questionLine(f.context), page: f.page, ...(withValue && f.value ? { studentAnswer: f.value } : {}) };
+  });
+}
