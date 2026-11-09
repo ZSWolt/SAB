@@ -77,6 +77,11 @@ describe('buildContent', () => {
 });
 
 describe('system prompts', () => {
+  it('asks for light punctuation in answers and reviews', () => {
+    expect(systemPrompt(DEFAULT_SETTINGS)).toContain('מעט סימני פיסוק');
+    expect(reviewSystemPrompt(DEFAULT_SETTINGS)).toContain('מעט סימני פיסוק');
+  });
+
   it('adds the style sample only when set', () => {
     expect(systemPrompt(DEFAULT_SETTINGS)).not.toContain('<style_sample>');
     const s = { ...DEFAULT_SETTINGS, styleSample: 'אני כותב ככה, בקצרה.' };
