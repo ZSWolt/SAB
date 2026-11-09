@@ -1,5 +1,6 @@
 import type { FieldInfo, FieldKind } from '../../shared/types';
 import { getText, isRendered, normalize } from '../text';
+import { findCustomChoices } from './choices';
 
 /** A field group found in the DOM: one text box, or one set of radio/checkbox options. */
 export interface FieldGroup {
@@ -11,6 +12,7 @@ export interface FieldGroup {
 }
 
 const ID_ATTR = 'data-sab-id';
+const KIND_ATTR = 'data-sab-kind';
 const GROUP_ATTR = 'data-sab-group';
 const TEXT_INPUT_TYPES = new Set(['', 'text', 'number', 'email', 'url', 'tel']);
 /** Containers that usually hold exactly one question. */
@@ -139,11 +141,21 @@ export function findFieldGroups(doc: Document = document): FieldGroup[] {
     }
   }
 
+  // Clickable option boxes numbered 1, 2, 3… (e.g. CET) count as multiple-choice questions too.
+  for (const c of findCustomChoices(doc)) {
+    groups.push({ id: '', kind: c.multi ? 'checkbox' : 'radio', elements: c.items, optionLabels: c.labels });
+  }
+  // keep page order (position on the page decides the per-page field ids)
+  groups.sort((a, b) => (a.elements[0].compareDocumentPosition(b.elements[0]) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+
   for (const g of groups) {
     g.id = existingId(g.elements) ?? nextId();
     if (g.kind === 'radio' || g.kind === 'checkbox') {
-      g.elements.forEach((e) => e.setAttribute(GROUP_ATTR, g.id));
-      g.optionLabels = g.elements.map(optionLabel);
+      g.elements.forEach((e) => {
+        e.setAttribute(GROUP_ATTR, g.id);
+        e.setAttribute(KIND_ATTR, g.kind);
+      });
+      g.optionLabels ??= g.elements.map(optionLabel);
     } else {
       g.elements[0].setAttribute(ID_ATTR, g.id);
     }
@@ -203,6 +215,12 @@ export function fieldContext(group: FieldGroup): string {
   return text.slice(-2500);
 }
 
+/** A clickable option box looks selected (aria or a selected/active/checked class). */
+export function isSelectedBox(e: Element): boolean {
+  if (e.getAttribute('aria-checked') === 'true' || e.getAttribute('aria-selected') === 'true' || e.getAttribute('aria-pressed') === 'true') return true;
+  return /(^|[\s_-])(selected|active|checked|chosen|is-selected|is-active)($|[\s_-])/i.test(e.getAttribute('class') ?? '');
+}
+
 function currentValue(group: FieldGroup): string {
   const el = group.elements[0];
   switch (group.kind) {
@@ -219,7 +237,7 @@ function currentValue(group: FieldGroup): string {
     case 'checkbox':
       return group.elements
         .map((e, i) => {
-          const checked = e instanceof HTMLInputElement ? e.checked : e.getAttribute('aria-checked') === 'true';
+          const checked = e instanceof HTMLInputElement ? e.checked : isSelectedBox(e);
           return checked ? group.optionLabels?.[i] ?? '' : '';
         })
         .filter(Boolean)
@@ -249,6 +267,12 @@ export function findField(id: string, doc: Document = document): FieldGroup | nu
   if (!options.length) return null;
   const first = options[0];
   const kind: FieldKind =
-    (first as HTMLInputElement).type === 'checkbox' || first.getAttribute('role') === 'checkbox' ? 'checkbox' : 'radio';
-  return { id, kind, elements: options, optionLabels: options.map(optionLabel) };
+    first.getAttribute(KIND_ATTR) === 'checkbox' || (first as HTMLInputElement).type === 'checkbox' || first.getAttribute('role') === 'checkbox'
+      ? 'checkbox'
+      : 'radio';
+  const custom = !(first instanceof HTMLInputElement) && !first.getAttribute('role');
+  const labels = custom
+    ? options.map((o, i) => getText(o).trim().replace(new RegExp(`^${i + 1}\\s*`), '').trim())
+    : options.map(optionLabel);
+  return { id, kind, elements: options, optionLabels: labels };
 }

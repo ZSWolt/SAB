@@ -1,5 +1,5 @@
 import type { FillItem, FillOutcome } from '../shared/types';
-import { findField, type FieldGroup } from './extract/fields';
+import { findField, isSelectedBox, type FieldGroup } from './extract/fields';
 import { simplify } from './text';
 
 interface Undo {
@@ -85,7 +85,7 @@ export function matchScore(label: string, wanted: string): number {
 }
 
 function isChecked(el: Element): boolean {
-  return el instanceof HTMLInputElement ? el.checked : el.getAttribute('aria-checked') === 'true';
+  return el instanceof HTMLInputElement ? el.checked : isSelectedBox(el);
 }
 
 function pickOptions(group: FieldGroup, wanted: string): FillOutcome & { picked?: string[] } {

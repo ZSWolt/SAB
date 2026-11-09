@@ -70,11 +70,61 @@ export function findStory(doc: Document, isTop: boolean): { info: StoryInfo; ele
   const confident = hintScore(best.el) > 0 || (pageHasFields && best.text.length >= 1500) || sideScore(best.el) >= 2;
   if (!confident) return null;
 
-  const heading = best.el.querySelector('h1, h2, h3, h4, [role="heading"]');
+  const el = narrowToProse(best.el);
+  const text = cleanStory(getText(el));
+  if (text.length < MIN_STORY) return null;
+  const heading = el.querySelector('h1, h2, h3, h4, [role="heading"]');
   return {
-    info: { text: best.text.slice(0, 80000), source: hintScore(best.el) > 0 ? 'hint' : 'side', title: heading ? getText(heading) : undefined },
-    element: best.el,
+    info: { text: text.slice(0, 80000), source: hintScore(best.el) > 0 ? 'hint' : 'side', title: heading ? getText(heading) : undefined },
+    element: el,
   };
+}
+
+/** Characters of real prose (paragraph-like text blocks of 80+ characters) inside an element. */
+function proseChars(el: Element): number {
+  let n = 0;
+  el.querySelectorAll('p, div, span, li, blockquote, td, article, section').forEach((b) => {
+    // only text that sits directly in this block, so nested blocks aren't counted twice
+    const own = Array.from(b.childNodes)
+      .filter((c) => c.nodeType === Node.TEXT_NODE || (c.nodeType === Node.ELEMENT_NODE && /^(B|I|EM|STRONG|SPAN|A|BR|SUP|SUB|U|MARK)$/.test((c as Element).tagName) && !(c as Element).querySelector('p, div')))
+      .map((c) => c.textContent ?? '')
+      .join('')
+      .trim();
+    if (own.length >= 80) n += own.length;
+  });
+  return n;
+}
+
+/**
+ * The biggest field-free block often holds a lesson menu, buttons and the questions around the
+ * story. Go down into the child that holds almost all of the long paragraphs: that's the story.
+ */
+export function narrowToProse(start: Element): Element {
+  let el = start;
+  for (let depth = 0; depth < 12; depth++) {
+    const total = proseChars(el);
+    if (total < MIN_STORY) break;
+    let next: Element | null = null;
+    for (const c of Array.from(el.children)) {
+      if (proseChars(c) >= total * 0.85) {
+        next = c;
+        break;
+      }
+    }
+    if (!next) break;
+    el = next;
+  }
+  return el;
+}
+
+/** Drops image labels and lines that are just leftovers from buttons and menus. */
+function cleanStory(text: string): string {
+  return text
+    .split('\n')
+    .filter((l) => !/^\[תמונה: [^\]]*\]$/.test(l.trim()))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /** Clicks something that looks like the "open the story" button. Returns its label, or null. */

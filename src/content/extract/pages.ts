@@ -93,6 +93,14 @@ export function findPagination(doc: Document = document): Pagination | null {
     }
     for (const [container, list] of groups) {
       if (list.length < 2 || container.querySelector('[data-sab-id], [data-sab-group]')) continue;
+      // Page buttons hold just their number. An item with more text (an answer option "1 היא חיה…",
+      // a lesson section "01 דיון…") is not a page button, and clicking it would choose an answer.
+      const onlyNumbers = list.every(({ el, n }) => {
+        let item: Element = el;
+        while (item.parentElement && item.parentElement !== container) item = item.parentElement;
+        return getText(item).trim() === String(n);
+      });
+      if (!onlyNumbers) continue;
       const nums = list.map((c) => c.n);
       const set = new Set(nums);
       const n = list.length;
