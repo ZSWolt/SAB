@@ -16,14 +16,19 @@
 - **מילוי אוטומטי** + **ביטול מילוי**, כפתור העתקה לכל תשובה, ואפשרות לצרף צילום מסך לשאלות עם תמונה או גרף.
 
 ## התקנה ב-Windows (מתעדכן לבד – מומלץ)
-1. תוריד את [`install.bat`](https://github.com/ZSWolt/SAB/releases/download/latest/install.bat) ותריץ אותו בלחיצה כפולה. אם Windows מזהיר, לוחצים "מידע נוסף" ← "הפעל בכל זאת".
-2. הסקריפט מוריד את התוסף לתיקייה `%LOCALAPPDATA%\SAB\extension` ומעתיק את הנתיב שלה.
-3. פעם אחת בלבד ב-Chrome: נכנסים ל-`chrome://extensions`, מדליקים **Developer mode**, לוחצים **Load unpacked** ומדביקים את הנתיב (Ctrl+V).
-4. בדף ההגדרות שנפתח מדביקים את **מפתח ה-API של Claude**, משיגים אותו ב-[console.anthropic.com](https://console.anthropic.com/settings/keys).
+1. פותחים **PowerShell**: לוחצים על התחל, כותבים `PowerShell` ולוחצים Enter. לא צריך הרשאות מנהל.
+2. מדביקים את הפקודה הזאת ולוחצים Enter:
+   ```powershell
+   irm https://github.com/ZSWolt/SAB/releases/download/latest/sab-update.ps1 | iex
+   ```
+   ככה זה עובד גם כש-**Smart App Control** דלוק, כי לא מריצים קובץ שהורד.
+3. התוסף יורד לתיקייה `%LOCALAPPDATA%\SAB\extension`, והנתיב שלה מועתק.
+4. פעם אחת בלבד ב-Chrome: נכנסים ל-`chrome://extensions`, מדליקים **Developer mode**, לוחצים **Load unpacked** ומדביקים את הנתיב (Ctrl+V).
+5. בדף ההגדרות שנפתח מדביקים את **מפתח ה-API של Claude**, משיגים אותו ב-[console.anthropic.com](https://console.anthropic.com/settings/keys).
 
 **מעכשיו הוא מתעדכן לבד:** כל שינוי בקוד נבנה אוטומטית ב-GitHub. משימה מתוזמנת ב-Windows מורידה את הגרסה החדשה בכניסה למחשב וכל 3 שעות, והתוסף טוען את עצמו מחדש. אם דף היה פתוח בזמן העדכון, מרעננים אותו (F5).
-- עדכון ידני מיידי: מריצים שוב את `install.bat`.
-- ביטול העדכונים האוטומטיים: `powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\SAB\sab-update.ps1" -Uninstall`
+- עדכון ידני מיידי: מדביקים שוב את אותה פקודה ב-PowerShell.
+- ביטול העדכונים האוטומטיים: `Unregister-ScheduledTask -TaskName 'SAB Extension Updater' -Confirm:$false`
 - יומן עדכונים: `%LOCALAPPDATA%\SAB\update.log`
 
 ## התקנה ידנית (למפתחים)

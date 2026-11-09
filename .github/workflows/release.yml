@@ -40,7 +40,6 @@ jobs:
           (cd dist && zip -qr ../sab-extension.zip .)
           cp dist/build.json build.json
           cp scripts/windows/sab-update.ps1 sab-update.ps1
-          cp scripts/windows/install.bat install.bat
 
       - name: Publish "latest" release
         env:
@@ -52,5 +51,6 @@ jobs:
           if ! gh release view latest >/dev/null 2>&1; then
             gh release create latest --title "SAB – גרסה אחרונה" --notes "נבנה אוטומטית." --latest
           fi
-          gh release upload latest sab-extension.zip build.json sab-update.ps1 install.bat --clobber
+          gh release upload latest sab-extension.zip build.json sab-update.ps1 --clobber
+          gh release delete-asset latest install.bat -y 2>/dev/null || true
           gh release edit latest --notes "גרסה $VERSION · $(git log -1 --pretty=%s)"
