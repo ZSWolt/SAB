@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 
 const dist = resolve('dist');
 const requests = [];
+const geminiRequests = [];
 
 function sse(res, events) {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
@@ -47,6 +48,16 @@ const server = http.createServer((req, res) => {
     res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' });
     return res.end();
   }
+  if (url.pathname === '/v1beta/interactions') {
+    let raw = '';
+    req.on('data', (c) => (raw += c));
+    req.on('end', () => {
+      geminiRequests.push({ body: JSON.parse(raw), headers: req.headers });
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ steps: [{ type: 'model_output', content: [{ type: 'text', text: 'בסרטון הסופר אומר: "כתבתי את הסיפור בקיץ".' }] }] }));
+    });
+    return;
+  }
   if (url.pathname === '/v1/messages') {
     let raw = '';
     req.on('data', (c) => (raw += c));
@@ -77,7 +88,10 @@ try {
   let [sw] = ctx.serviceWorkers();
   if (!sw) sw = await ctx.waitForEvent('serviceworker');
   await sw.evaluate(
-    (base) => chrome.storage.local.set({ settings: { apiKey: 'sk-ant-test', apiBaseUrl: base, model: 'claude-opus-5-5' } }),
+    (base) =>
+      chrome.storage.local.set({
+        settings: { apiKey: 'sk-ant-test', apiBaseUrl: base, model: 'claude-opus-5-5', geminiApiKey: 'AIza-test', geminiBaseUrl: base },
+      }),
     `http://localhost:${port}`,
   );
   // close the options tab opened on install
@@ -108,6 +122,7 @@ try {
   await page.click('#sab-helper-host >> text=בדוק מה זוהה');
   await page.waitForSelector('#sab-helper-host >> text=/נמצאו 3 שדות/');
   await page.waitForSelector('#sab-helper-host >> text=/זוהה סיפור/');
+  await page.waitForSelector('#sab-helper-host >> text=/1 סרטוני יוטיוב/');
   console.log('✓ scan: 3 fields (one in a cross-origin iframe) + hidden story');
 
   // solve
@@ -121,6 +136,14 @@ try {
   assert.equal(req.body.fallbacks, 'default');
   assert.ok(String(req.headers['anthropic-beta']).includes('server-side-fallback-2026-07-01'));
   await page.waitForSelector('#sab-helper-host >> text=עגנון פרס נובל שנה');
+  const g = geminiRequests.at(-1);
+  assert.ok(g, 'gemini called');
+  assert.equal(g.headers['x-goog-api-key'], 'AIza-test');
+  assert.deepEqual(g.body.input[0], { type: 'video', uri: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' });
+  assert.ok(userText.includes('<video url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"'), 'video description sent to Claude');
+  assert.ok(userText.includes('כתבתי את הסיפור בקיץ'));
+  await page.waitForSelector('#sab-helper-host >> text=/🎬 נצפה/');
+  console.log('✓ video: Gemini watched the YouTube video and Claude got the description');
   console.log('✓ solve: story + web search + answers shown');
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
 

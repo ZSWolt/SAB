@@ -2,6 +2,7 @@ import type { FrameSnapshot } from '../../shared/types';
 import { getText } from '../text';
 import { describeFields, findFieldGroups } from './fields';
 import { findStory } from './story';
+import { findVideos } from './videos';
 
 const MAX_PAGE_TEXT = 60000;
 
@@ -44,5 +45,6 @@ export function extractFrame(doc: Document = document): FrameSnapshot {
     fields,
     story: found?.info,
     fullText: found?.element === doc.body ? '' : fullText,
+    videos: findVideos(doc),
   };
 }

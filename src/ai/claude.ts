@@ -189,6 +189,7 @@ export async function solveWithClaude(
           sources: sources.slice(0, 12),
           model: finalModel,
           searches,
+          videos: [],
           costUsd: totalCost + searches.length * 0.01,
         };
       }
@@ -206,6 +207,7 @@ export async function solveWithClaude(
           notes: 'התשובה חזרה כטקסט ולא שויכה לשדות – תעתיק ידנית.',
           model: finalModel,
           searches,
+          videos: [],
           costUsd: totalCost + searches.length * 0.01,
         };
       }

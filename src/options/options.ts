@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, getSettings, MODELS, saveSettings, type Settings } from '../shared/settings';
+import { DEFAULT_SETTINGS, GEMINI_MODELS, getSettings, MODELS, saveSettings, type Settings } from '../shared/settings';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const keys = Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[];
@@ -16,6 +16,8 @@ function read(): Partial<Settings> {
 async function init() {
   const model = $<HTMLSelectElement>('model');
   for (const m of MODELS) model.append(new Option(m.label, m.id));
+  const gModel = $<HTMLSelectElement>('geminiModel');
+  for (const m of GEMINI_MODELS) gModel.append(new Option(m.label, m.id));
   const s = await getSettings();
   for (const k of keys) {
     const el = $<HTMLInputElement>(k);
@@ -32,6 +34,11 @@ async function init() {
   $('test').addEventListener('click', async () => {
     status.textContent = 'בודק…';
     status.textContent = await chrome.runtime.sendMessage({ type: 'test-key', settings: read() });
+  });
+  $('testGemini').addEventListener('click', async () => {
+    const gs = $('geminiStatus');
+    gs.textContent = 'בודק…';
+    gs.textContent = await chrome.runtime.sendMessage({ type: 'test-gemini', settings: read() });
   });
   $('shortcuts').addEventListener('click', (e) => {
     e.preventDefault();

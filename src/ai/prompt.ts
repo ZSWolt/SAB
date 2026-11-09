@@ -19,6 +19,7 @@ export function systemPrompt(settings: Settings): string {
 
 ## איך לענות
 - תקרא את כל הדף. תמצא **כל** שאלה ו**כל** סעיף (א, ב, ג... / 1, 2, 3... / "הסבר", "הבא דוגמה", "נמק" וכו') ותענה על כולם. אל תדלג על שום חלק של שאלה – אם בשאלה יש כמה דרישות (למשל "הסבר ותן דוגמה"), התשובה צריכה לכלול את כולן.
+- אם יש תיאור של סרטון (<video>) – תשתמש בו כמו שהיית משתמש בסרטון עצמו: לאירועים, לציטוטים ולזמנים.
 - אם יש סיפור/שיר/קטע קריאה – התשובות בספרות צריכות להתבסס עליו: להפנות לאירועים ולדמויות, ולצטט ממנו כשזה מחזק את התשובה.
 - שאלות אמריקאיות: תבחר את האפשרות הנכונה ותכתוב ב-option את הנוסח **המדויק** שלה כמו שהוא מופיע בדף. ב-answer תכתוב הסבר קצר למה זו התשובה.
 - שאלות עובדתיות (היסטוריה, תנ"ך, אזרחות, מדעים, תאריכים, מספרים, ציטוטים, פרטים על יצירות ויוצרים): תבדוק בחיפוש באינטרנט לפני שאתה עונה, ותעדיף מקורות אמינים – אתרי משרד החינוך וממשלת ישראל (gov.il), מט"ח (cet.ac.il), אוניברסיטאות ומוסדות מחקר, אנציקלופדיות (בריטניקה, האנציקלופדיה העברית), ספריות, ארכיונים ומוזיאונים, ו"דעת", "ynet/הארץ" רק לחדשות. ויקיפדיה רק כנקודת התחלה – תאמת אותה מול מקור נוסף. אל תסתמך על אתרי סיכומים של תלמידים, פורומים או תשובות AI.
@@ -43,6 +44,8 @@ export function buildUserText(
   opener: TaggedSnapshot[],
   note: string,
   manualStory: string,
+  videos: { url: string; text: string }[] = [],
+  missingVideos: { url: string; ok: boolean; message?: string }[] = [],
 ): string {
   const parts: string[] = [];
   const top = snaps.find((s) => s.isTop) ?? snaps[0];
@@ -58,6 +61,18 @@ export function buildUserText(
     if (seen.has(key)) continue;
     seen.add(key);
     parts.push(`<story title="${st.title ?? ''}">\n${cut(st.text, 80000)}\n</story>`);
+  }
+
+  for (const v of videos) {
+    parts.push(
+      `<video url="${v.url}" note="תיאור של הסרטון (מה רואים ומה שומעים) שכתב מודל שצפה בו">\n${cut(v.text, 40000)}\n</video>`,
+    );
+  }
+  const missing = missingVideos.filter((v) => !v.ok);
+  if (missing.length) {
+    parts.push(
+      `<missing_videos note="בדף יש סרטונים שלא נצפו. אם שאלה תלויה בהם, תענה מה שאפשר ותכתוב ב-notes שצריך לצפות בסרטון">\n${missing.map((v) => v.url).join('\n')}\n</missing_videos>`,
+    );
   }
 
   for (const s of snaps) {

@@ -195,8 +195,10 @@ export class Panel {
   private renderScan(snaps: TaggedSnapshot[], opener: TaggedSnapshot[]) {
     const fields = snaps.flatMap((s) => s.fields.map((f) => ({ ...f, frame: s.frameId })));
     const story = [...snaps, ...opener].find((s) => s.story)?.story;
+    const videos = new Set([...snaps, ...opener].flatMap((s) => (s.videos ?? []).map((v) => v.url))).size;
     this.els.scanInfo.textContent =
       `נמצאו ${fields.length} שדות תשובה ב-${snaps.length} מסגרות` +
+      (videos ? ` · ${videos} סרטוני יוטיוב 🎬` : '') +
       (opener.length ? ' · נמצא גם החלון שפתח את המשימה' : '') +
       (story ? ' · זוהה סיפור ✓' : ' · לא זוהה סיפור');
     this.els.fields.replaceChildren(
@@ -249,7 +251,7 @@ export class Panel {
     switch (m.type) {
       case 'scan':
         this.setStatus(
-          `מצאתי ${m.fields} שדות ב-${m.frames} מסגרות${m.story ? ' + סיפור' : ''}${m.opener ? ' + החלון המקורי' : ''}. שולח ל-Claude…`,
+          `מצאתי ${m.fields} שדות ב-${m.frames} מסגרות${m.story ? ' + סיפור' : ''}${m.videos ? ` + ${m.videos} סרטונים` : ''}${m.opener ? ' + החלון המקורי' : ''}. שולח ל-Claude…`,
           true,
         );
         break;
@@ -282,7 +284,12 @@ export class Panel {
     this.result = result;
     const cost = result.costUsd ? ` · עלות משוערת: $${result.costUsd.toFixed(3)}` : '';
     this.setStatus(`✅ מוכן – ${result.answers.length} תשובות${cost}${result.notes ? `\n${result.notes}` : ''}`);
-    this.els.searches.replaceChildren(...result.searches.map((q) => h('div', {}, q)));
+    this.els.searches.replaceChildren(
+      ...(result.videos ?? []).map((v) =>
+        h('div', { class: v.ok ? 'video ok' : 'video bad', title: v.url }, `${v.ok ? '🎬 נצפה' : '⚠️ לא נצפה'}: ${v.url.replace('https://www.', '')}${v.message ? ` – ${v.message}` : ''}`),
+      ),
+      ...result.searches.map((q) => h('div', {}, q)),
+    );
     this.els.answers.replaceChildren(...result.answers.map((a) => this.answerCard(a)));
     this.els.sources.replaceChildren(
       ...(result.sources.length ? [h('div', { class: 'muted' }, 'מקורות:')] : []),

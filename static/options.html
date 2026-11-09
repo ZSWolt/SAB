@@ -56,9 +56,27 @@
     <label for="extraInstructions">הוראות קבועות ל-AI (לא חובה)</label>
     <textarea id="extraInstructions" placeholder='למשל: "אני לומד 5 יח"ל היסטוריה", "תכתוב קצת פחות מושלם, כמו תלמיד"'></textarea>
 
+  </div>
+
+  <div class="card">
+    <b>🎬 סרטונים (Gemini)</b>
+    <div class="hint">כשיש סרטון יוטיוב במשימה, Gemini של Google צופה בו – רואה וגם שומע – וכותב תיאור מפורט, ו-Claude עונה לפיו. בלי מפתח, הסרטונים פשוט מדולגים.</div>
+    <label for="geminiApiKey">מפתח Gemini API</label>
+    <input id="geminiApiKey" type="password" placeholder="AIza..." autocomplete="off">
+    <div class="hint">משיגים בחינם ב-<a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>. רק סרטונים ציבוריים עובדים (לא פרטיים / לא רשומים).</div>
+    <label for="geminiModel">מודל לסרטונים</label>
+    <select id="geminiModel"></select>
+    <div class="hint" style="line-height:1.7">
+      <b>חינם:</b> מגבלה של בקשות ליום ועד 8 שעות סרטונים ביום. Google יכולה להשתמש במה שנשלח כדי לשפר את המוצרים שלה (ואנשים אצלם עשויים לקרוא את זה).<br>
+      <b>בתשלום</b> (מפעילים חיוב ב-AI Studio): בלי מגבלת אורך, מגבלות בקשות גבוהות יותר, המידע לא משמש לאימון, ואפשר להשתמש ב-Pro. סרטון של 10 דקות עולה בערך 15–30 אגורות ב-Flash.
+    </div>
+    <div class="row"><button id="testGemini" class="secondary">בדוק חיבור ל-Gemini</button><span id="geminiStatus"></span></div>
+
     <details><summary class="hint">מתקדם</summary>
       <label for="apiBaseUrl">כתובת API (לבדיקות בלבד)</label>
       <input id="apiBaseUrl" type="text" placeholder="ריק = https://api.anthropic.com">
+      <label for="geminiBaseUrl">כתובת Gemini API (לבדיקות בלבד)</label>
+      <input id="geminiBaseUrl" type="text" placeholder="ריק = https://generativelanguage.googleapis.com">
     </details>
 
     <div class="row">

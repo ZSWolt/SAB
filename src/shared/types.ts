@@ -19,6 +19,12 @@ export interface StoryInfo {
   title?: string;
 }
 
+export interface VideoInfo {
+  /** Normalized https://www.youtube.com/watch?v=ID */
+  url: string;
+  title?: string;
+}
+
 /** Everything the reader got from one frame. */
 export interface FrameSnapshot {
   url: string;
@@ -28,6 +34,7 @@ export interface FrameSnapshot {
   fields: FieldInfo[];
   story?: StoryInfo;
   fullText: string;
+  videos: VideoInfo[];
 }
 
 /** A frame snapshot after the background tagged it with its frame id. */
@@ -56,6 +63,8 @@ export interface SolveResult {
   notes: string;
   model: string;
   searches: string[];
+  /** Videos Gemini watched, and ones it couldn't. */
+  videos: { url: string; ok: boolean; message?: string }[];
   /** Approximate cost in USD. */
   costUsd: number;
 }
@@ -83,6 +92,6 @@ export type PortMessage =
   | { type: 'status'; text: string }
   | { type: 'search'; query: string }
   | { type: 'thinking'; text: string }
-  | { type: 'scan'; fields: number; story: boolean; frames: number; opener: boolean }
+  | { type: 'scan'; fields: number; story: boolean; frames: number; opener: boolean; videos: number }
   | { type: 'result'; result: SolveResult }
   | { type: 'error'; message: string };

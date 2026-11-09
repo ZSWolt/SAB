@@ -19,7 +19,7 @@ describe('parseAnswers', () => {
 
 describe('buildUserText', () => {
   it('prefixes field ids with the frame id and includes the story once', () => {
-    const snap = { url: 'https://x', title: 't', isTop: true, adapter: 'generic', frameId: 0, fullText: 'שאלה 1',
+    const snap = { url: 'https://x', title: 't', isTop: true, adapter: 'generic', frameId: 0, fullText: 'שאלה 1', videos: [],
       fields: [{ id: 'f1', kind: 'textarea' as const, context: 'שאלה 1' }], story: { text: 'סיפור', source: 'hint' } };
     const text = buildUserText([snap, { ...snap, frameId: 3, isTop: false, fields: [] }], [], '', '');
     expect(text).toContain('"0:f1"');

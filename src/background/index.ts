@@ -1,8 +1,9 @@
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { buildUserText, systemPrompt } from '../ai/prompt';
 import { solveWithClaude, SolveError, testKey } from '../ai/claude';
+import { testGeminiKey, watchVideoCached } from '../ai/gemini';
 import { getSettings } from '../shared/settings';
-import type { FillItem, FillOutcome, FrameSnapshot, PortMessage, SolveRequest, TaggedSnapshot } from '../shared/types';
+import type { FillItem, FillOutcome, FrameSnapshot, PortMessage, SolveRequest, SolveResult, TaggedSnapshot } from '../shared/types';
 
 // ---------- frames ----------
 
@@ -26,7 +27,7 @@ async function collect(tabId: number): Promise<TaggedSnapshot[]> {
     const res = await inAllFrames<FrameSnapshot>(tabId, '__sabExtract');
     return res
       .map(({ frameId, result }) => ({ ...result, frameId }))
-      .filter((s) => s.fields.length || s.story || s.fullText.trim())
+      .filter((s) => s.fields.length || s.story || s.fullText.trim() || s.videos?.length)
       .sort((a, b) => Number(b.isTop) - Number(a.isTop) || a.frameId - b.frameId);
   } catch {
     return [];
@@ -120,7 +121,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const tabId = sender.tab?.id;
   if (tabId === undefined) {
     if (msg?.type === 'test-key') getSettings().then((s) => testKey({ ...s, ...msg.settings })).then(reply);
-    return msg?.type === 'test-key';
+    if (msg?.type === 'test-gemini') getSettings().then((s) => testGeminiKey({ ...s, ...msg.settings })).then(reply);
+    return msg?.type === 'test-key' || msg?.type === 'test-gemini';
   }
   (async () => {
     switch (msg?.type) {
@@ -178,6 +180,8 @@ chrome.runtime.onConnect.addListener((port) => {
     abort.abort();
   });
   const post = (m: PortMessage) => alive && port.postMessage(m);
+  // MV3 stops an idle service worker after ~30s; a pending fetch doesn't count as activity.
+  const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000);
 
   port.onMessage.addListener(async (req: SolveRequest) => {
     if (tabId === undefined) return;
@@ -191,9 +195,40 @@ chrome.runtime.onConnect.addListener((port) => {
       const openerId = await openerOf(tabId);
       const opener = openerId !== null ? await collect(openerId) : [];
       const fields = snaps.reduce((n, s) => n + s.fields.length, 0);
-      const hasText = snaps.some((s) => s.fullText.trim() || s.story) || req.manualStory.trim() || req.screenshot;
+      const hasText = snaps.some((s) => s.fullText.trim() || s.story || s.videos?.length) || req.manualStory.trim() || req.screenshot;
       if (!hasText) throw new SolveError('לא הצלחתי לקרוא כלום מהדף. תרענן את הדף ותנסה שוב.');
-      post({ type: 'scan', fields, frames: snaps.length, story: [...snaps, ...opener].some((s) => s.story) || !!req.manualStory.trim(), opener: opener.length > 0 });
+      const videoUrls = [...new Set([...snaps, ...opener].flatMap((s) => (s.videos ?? []).map((v) => v.url)))].slice(0, 4);
+      post({
+        type: 'scan',
+        fields,
+        frames: snaps.length,
+        story: [...snaps, ...opener].some((s) => s.story) || !!req.manualStory.trim(),
+        opener: opener.length > 0,
+        videos: videoUrls.length,
+      });
+
+      // Videos: Gemini watches (picture + sound) and describes them; Claude then answers from the description.
+      const videoNotes: { url: string; text: string }[] = [];
+      const videoStatus: SolveResult['videos'] = [];
+      let videoCost = 0;
+      if (videoUrls.length && !settings.geminiApiKey) {
+        for (const url of videoUrls) videoStatus.push({ url, ok: false, message: 'אין מפתח Gemini בהגדרות – הסרטון לא נצפה' });
+      } else if (videoUrls.length) {
+        const questions =
+          snaps.flatMap((s) => s.fields.map((f) => f.context)).join('\n---\n') ||
+          snaps.map((s) => s.fullText).join('\n').slice(0, 6000);
+        for (const [i, url] of videoUrls.entries()) {
+          post({ type: 'status', text: `🎬 Gemini צופה בסרטון ${i + 1} מתוך ${videoUrls.length}… (סרטון ארוך יכול לקחת דקה-שתיים)` });
+          try {
+            const v = await watchVideoCached(settings, url, questions, abort.signal);
+            videoNotes.push({ url, text: v.text });
+            videoStatus.push({ url, ok: true, message: v.cached ? 'מהזיכרון (בחינם)' : undefined });
+            videoCost += v.costUsd;
+          } catch (e) {
+            videoStatus.push({ url, ok: false, message: e instanceof Error ? e.message : String(e) });
+          }
+        }
+      }
 
       const content: BetaContentBlockParam[] = [];
       if (req.screenshot?.startsWith('data:image/')) {
@@ -202,7 +237,7 @@ chrome.runtime.onConnect.addListener((port) => {
         content.push({ type: 'image', source: { type: 'base64', media_type: media, data } });
         content.push({ type: 'text', text: 'למעלה: צילום מסך של המשימה כפי שהיא נראית עכשיו.' });
       }
-      content.push({ type: 'text', text: buildUserText(snaps, opener, req.note, req.manualStory) });
+      content.push({ type: 'text', text: buildUserText(snaps, opener, req.note, req.manualStory, videoNotes, videoStatus) });
 
       const result = await solveWithClaude(
         settings,
@@ -215,6 +250,8 @@ chrome.runtime.onConnect.addListener((port) => {
         },
         abort.signal,
       );
+      result.videos = videoStatus;
+      result.costUsd += videoCost;
       const results = await getMap<unknown>('results');
       results[tabId] = result;
       await chrome.storage.session.set({ results });
@@ -224,6 +261,7 @@ chrome.runtime.onConnect.addListener((port) => {
     } catch (e) {
       post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     } finally {
+      clearInterval(keepAlive);
       if (alive) port.disconnect();
     }
   });

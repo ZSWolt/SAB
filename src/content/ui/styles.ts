@@ -39,7 +39,8 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 13px; col
 .status { background: var(--soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 13px; white-space: pre-wrap; }
 .status.err { background: #fee2e2; color: #991b1b; }
 .searches { font-size: 12px; color: var(--muted); margin: 4px 0 10px; }
-.searches div::before { content: "🔎 "; }
+.searches div:not(.video)::before { content: "🔎 "; }
+.searches .video { font-size: 12px; margin-bottom: 3px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 10px; }
 .card h3 { margin: 0 0 6px; font-size: 13px; color: var(--accent); display: flex; gap: 6px; align-items: center; }
 .card h3 span { flex: 1; }
