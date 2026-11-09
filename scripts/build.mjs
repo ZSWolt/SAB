@@ -30,6 +30,7 @@ const options = {
   sourcemap: 'linked',
   minify: !watch,
   logLevel: 'info',
+  loader: { '.woff2': 'binary' },
 };
 
 // Content scripts can't be ES modules, so build it as an IIFE separately.

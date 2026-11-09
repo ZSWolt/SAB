@@ -57,15 +57,15 @@ async function friendly(res: Response): Promise<string> {
   } catch {
     /* ignore */
   }
-  if (res.status === 400 && /api key/i.test(detail)) return 'מפתח Gemini לא תקין – תבדוק בהגדרות.';
-  if (res.status === 401 || res.status === 403) return 'מפתח Gemini לא תקין או בלי הרשאה – תבדוק בהגדרות.';
+  if (res.status === 400 && /api key/i.test(detail)) return 'מפתח Gemini לא תקין. תבדוק אותו בהגדרות';
+  if (res.status === 401 || res.status === 403) return 'מפתח Gemini לא תקין או בלי הרשאה. תבדוק אותו בהגדרות';
   if (res.status === 429)
     return 'הגעת למגבלה של Gemini (בחינם יש מגבלה ליום ולדקה). תנסה עוד מעט, או תפעיל תשלום ב-AI Studio.';
   if (/private|unlisted|not.*(public|available)|permission/i.test(detail))
-    return 'Gemini לא יכול לצפות בסרטון הזה – הוא כנראה פרטי או לא רשום (Unlisted). רק סרטונים ציבוריים עובדים.';
-  if (res.status === 404) return 'המודל של Gemini לא נמצא – תבחר מודל אחר בהגדרות.';
+    return 'Gemini לא יכול לצפות בסרטון הזה. הוא כנראה פרטי או לא רשום, ורק סרטונים ציבוריים עובדים';
+  if (res.status === 404) return 'המודל של Gemini לא נמצא. תבחר מודל אחר בהגדרות';
   if (res.status === 503 || res.status === 500 || res.status === 502 || res.status === 504)
-    return 'השרתים של Gemini עמוסים כרגע (זה זמני). תנסה שוב עוד כמה דקות – או תבחר מודל אחר בהגדרות.';
+    return 'השרתים של Gemini עמוסים כרגע, זה זמני. תנסה שוב עוד כמה דקות או תבחר מודל אחר בהגדרות';
   return `שגיאה מ-Gemini (${res.status})${detail ? `: ${detail}` : ''}`;
 }
 
@@ -137,12 +137,12 @@ export async function watchVideo(
         last = e;
         if (!(e instanceof RetryableError)) throw e;
         if (attempt < RETRY_DELAYS_MS.length) {
-          onRetry?.(`Gemini עמוס כרגע – מנסה שוב בעוד ${RETRY_DELAYS_MS[attempt] / 1000} שניות…`);
+          onRetry?.(`Gemini עמוס כרגע. מנסה שוב בעוד ${RETRY_DELAYS_MS[attempt] / 1000} שניות`);
           await sleep(RETRY_DELAYS_MS[attempt], signal);
         }
       }
     }
-    if (mi < models.length - 1) onRetry?.(`${model} עמוס – עובר ל-${models[mi + 1]}…`);
+    if (mi < models.length - 1) onRetry?.(`${model} עמוס, עובר ל-${models[mi + 1]}`);
   }
   throw last instanceof Error ? last : new VideoError('Gemini לא זמין כרגע. תנסה שוב עוד כמה דקות.');
 }
@@ -170,9 +170,9 @@ export async function testGeminiKey(settings: Settings): Promise<string> {
     const res = await fetch(`${base}/v1beta/models/${settings.geminiModel}`, {
       headers: { 'x-goog-api-key': settings.geminiApiKey },
     });
-    if (res.ok) return '✅ Gemini מחובר';
-    return `❌ ${await friendly(res)}`;
+    if (res.ok) return 'Gemini מחובר';
+    return friendly(res);
   } catch {
-    return '❌ אין חיבור ל-Gemini';
+    return 'אין חיבור ל-Gemini';
   }
 }

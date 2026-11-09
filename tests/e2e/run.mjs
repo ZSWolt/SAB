@@ -111,6 +111,7 @@ const ctx = await chromium.launchPersistentContext('', {
   args: [`--disable-extensions-except=${dist}`, `--load-extension=${dist}`],
 });
 let ok = false;
+const shot = async (p, name) => process.env.SHOT_DIR && p.screenshot({ path: `${process.env.SHOT_DIR}/${name}.png` });
 try {
   let [sw] = ctx.serviceWorkers();
   if (!sw) sw = await ctx.waitForEvent('serviceworker');
@@ -125,7 +126,7 @@ try {
   for (const p of ctx.pages()) if (p.url().startsWith('chrome-extension://')) await p.close();
 
   const page = await ctx.newPage();
-  if (process.env.SHOT) await page.setViewportSize({ width: 1100, height: 760 });
+  if (process.env.SHOT || process.env.SHOT_DIR) await page.setViewportSize({ width: 1100, height: 760 });
   await page.goto(`http://localhost:${port}/task.html?attempt=7`);
   await page.waitForSelector('#sab-helper-host', { state: 'attached' });
   console.log('✓ button injected');
@@ -133,7 +134,7 @@ try {
   await page.keyboard.press('Alt+Shift+S');
   await page.waitForSelector('#sab-helper-host >> .panel.open');
   console.log('✓ Alt+Shift+S opens the panel');
-  await page.click('#sab-helper-host >> .head .icon[title^="סגור"]');
+  await page.click('#sab-helper-host >> .head .icon-btn[title="סגור"]');
   await page.waitForSelector('#sab-helper-host >> .panel:not(.open)', { state: 'attached' });
   console.log('✓ ✕ closes the panel');
 
@@ -150,23 +151,25 @@ try {
   await page.waitForSelector('#sab-helper-host >> text=/נמצאו 3 שדות/');
   await page.waitForSelector('#sab-helper-host >> text=/זוהה סיפור/');
   await page.waitForSelector('#sab-helper-host >> text=/1 סרטוני יוטיוב/');
+  await shot(page, '1-task');
   console.log('✓ scan: 3 fields (one in a cross-origin iframe) + hidden story');
 
   // solve
   await page.click('#sab-helper-host >> .btn.primary.big');
-  await page.waitForSelector('#sab-helper-host >> text=/מוכן – 2 תשובות/', { timeout: 20000 });
+  await page.waitForSelector('#sab-helper-host >> text=/מוכן · 2 תשובות/', { timeout: 20000 });
   const req = requests.at(-1);
   const doc = req.body.messages[0].content.find((c) => c.type === 'document');
   assert.ok(doc, 'PDF sent as a document block');
   assert.equal(Buffer.from(doc.source.data, 'base64').toString().slice(0, 5), '%PDF-');
   const storyBlock = req.body.messages[0].content.find((c) => c.type === 'text' && c.text.includes('<story'));
   assert.deepEqual(storyBlock.cache_control, { type: 'ephemeral' }, 'story block is cached');
-  await page.waitForSelector('#sab-helper-host >> text=/📄 נקרא/');
+  await page.waitForSelector('#sab-helper-host >> text=/נקרא: /');
   console.log('✓ PDF linked in the task is downloaded and sent; story block marked for caching');
 
-  await page.waitForSelector('#sab-helper-host >> text=/1 שדות לא קיבלו תשובה/');
+  await page.waitForSelector('#sab-helper-host >> text=/שדה אחד לא קיבל תשובה/');
+  await shot(page, '2-missing');
   await page.click('#sab-helper-host >> text=השלם את החסר');
-  await page.waitForSelector('#sab-helper-host >> text=/מוכן – 3 תשובות/', { timeout: 20000 });
+  await page.waitForSelector('#sab-helper-host >> text=/מוכן · 3 תשובות/', { timeout: 20000 });
   const onlyReq = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
   assert.ok(onlyReq.includes('תענה **רק** עליהם'));
   assert.equal(JSON.parse(onlyReq.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]).length, 1);
@@ -186,9 +189,10 @@ try {
   assert.deepEqual(g.body.input[0], { type: 'video', uri: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' });
   assert.ok(userText.includes('<video url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"'), 'video description sent to Claude');
   assert.ok(userText.includes('כתבתי את הסיפור בקיץ'));
-  await page.waitForSelector('#sab-helper-host >> text=/🎬 נצפה/');
+  await page.waitForSelector('#sab-helper-host >> text=/נצפה: /');
   console.log('✓ video: Gemini watched the YouTube video and Claude got the description');
   console.log('✓ solve: story + web search + answers shown');
+  await shot(page, '3-answers');
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
 
   // fill
@@ -199,7 +203,7 @@ try {
   await frame.waitForFunction(() => document.querySelector('#q3').value === '1966');
   console.log('✓ fill: textarea, radio and cross-origin iframe input');
 
-  await page.click('#sab-helper-host >> text=/בטל מילוי/');
+  await page.click('#sab-helper-host >> button[title="בטל מילוי"]');
   await page.waitForFunction(() => document.querySelector('#q1').value === '');
   console.log('✓ undo fill');
 
@@ -217,7 +221,7 @@ try {
   await page2.goto(`http://localhost:${port}/page2.html?attempt=7`);
   await page2.waitForSelector('#sab-helper-host', { state: 'attached' });
   await page2.keyboard.press('Alt+Shift+A');
-  await page2.waitForSelector('#sab-helper-host >> text=/מוכן – 1 תשובות/', { timeout: 20000 });
+  await page2.waitForSelector('#sab-helper-host >> text=/מוכן · 1 תשובות/', { timeout: 20000 });
   const p2 = requests.at(-1).body.messages[0].content;
   const p2text = p2.map((c) => c.text ?? '').join('\n');
   assert.ok(p2text.includes('הכלה יצאה לצוד פרפרים'), 'story from page 1');
@@ -230,6 +234,7 @@ try {
   await page2.click('#sab-helper-host >> .tab >> text=היסטוריה');
   await page2.waitForSelector('#sab-helper-host >> text=/הוצאה החודש/');
   await page2.waitForSelector('#sab-helper-host >> .hist >> text=משימה בספרות');
+  await shot(page2, '5-history');
   console.log('✓ history tab lists the task with its cost');
 
   // check me
@@ -240,6 +245,8 @@ try {
   const rv = requests.at(-1).body;
   assert.ok(rv.tools.some((t) => t.name === 'submit_review'));
   assert.ok(rv.messages[0].content.map((c) => c.text ?? '').join('\n').includes('הפרפרים מסמלים חופש'));
+  await page2.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelector('details').open = true);
+  await shot(page2, '4-review');
   await page2.click('#sab-helper-host >> text=/החלף בגרסה המשופרת/');
   await page2.waitForFunction(() => document.querySelector('#q5').value === 'תשובה משופרת מהבדיקה');
   console.log('✓ check-me: grade + comments, and "replace with improved" fills the field');
@@ -249,7 +256,7 @@ try {
   await page.evaluate(() => document.querySelector('.pager span[data-p="2"]').click()); // the student is on page 2
   await page.waitForFunction(() => window.__cur === 2);
   await page.keyboard.press('Alt+Shift+A');
-  await page.waitForSelector('#sab-helper-host >> text=/מוכן – 3 תשובות/', { timeout: 30000 });
+  await page.waitForSelector('#sab-helper-host >> text=/מוכן · 3 תשובות/', { timeout: 30000 });
   const pagedText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
   for (const t of ['מה שם הגיבור', 'מי כתב את הסיפור', 'באיזו שנה נכתב', 'עמוד 3 מתוך 3']) assert.ok(pagedText.includes(t), t);
   const pagedFields = JSON.parse(pagedText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
@@ -272,11 +279,24 @@ try {
   await popup.waitForLoadState();
   await popup.waitForSelector('#sab-helper-host', { state: 'attached' });
   await popup.keyboard.press('Alt+Shift+A');
-  await popup.waitForSelector('#sab-helper-host >> text=/מוכן – 1 תשובות/', { timeout: 20000 });
+  await popup.waitForSelector('#sab-helper-host >> text=/מוכן · 1 תשובות/', { timeout: 20000 });
   const popupText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
   assert.ok(popupText.includes('<opener_window'), 'opener window context sent');
   assert.ok(popupText.includes('הכלה יצאה לצוד פרפרים'), 'story from opener sent');
   console.log('✓ popup window: panel injected, Alt+Shift+A solves, story from the opening window included');
+  if (process.env.SHOT_DIR) {
+    const id = new URL(sw.url()).host;
+    const op = await ctx.newPage();
+    await op.setViewportSize({ width: 900, height: 1100 });
+    await op.goto(`chrome-extension://${id}/options.html`);
+    await op.waitForTimeout(300);
+    await shot(op, '6-options');
+    await op.emulateMedia({ colorScheme: 'dark' });
+    await op.reload();
+    await op.waitForTimeout(300);
+    await shot(op, '7-options-dark');
+    await op.close();
+  }
   ok = true;
 } finally {
   await ctx.close();

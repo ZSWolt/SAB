@@ -64,6 +64,9 @@ npm run build
 ## עלות
 התשלום הוא לפי שימוש בחשבון Anthropic. אחרי כל פתרון מוצגת עלות משוערת. ב-Opus 5.5 זה בערך כמה סנטים למשימה. Sonnet 5.5 זול יותר וזמין בהגדרות.
 
+## עיצוב
+העיצוב נבנה לפי הגישה של [unslop](https://github.com/heydamir/unslop) מאת Damir Sokolovsky ([@heydamir](https://x.com/heydamir)), ברישיון CC BY 4.0. הכיוון הוא מחברת בית ספר: משטחים שקטים, דיו כחול לפעולה הראשית, מרקר צהוב על התשובה הנכונה, וציון מוקף בעט אדום. הגופן הוא IBM Plex Sans Hebrew ברישיון SIL OFL, והאייקונים הם lucide ברישיון ISC.
+
 ## פיתוח
 ```bash
 npm run watch      # בנייה מחדש בכל שינוי

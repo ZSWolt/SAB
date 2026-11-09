@@ -1,3 +1,4 @@
+import { loadFonts } from '../content/ui/fonts';
 import { DEFAULT_SETTINGS, GEMINI_MODELS, getSettings, MODELS, saveSettings, type Settings } from '../shared/settings';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -14,6 +15,8 @@ function read(): Partial<Settings> {
 }
 
 async function init() {
+  loadFonts();
+  $('version').textContent = `v${chrome.runtime.getManifest().version}`;
   const model = $<HTMLSelectElement>('model');
   for (const m of MODELS) model.append(new Option(m.label, m.id));
   const gModel = $<HTMLSelectElement>('geminiModel');
@@ -26,10 +29,11 @@ async function init() {
     else el.value = String(s[k] ?? '');
   }
   const status = $('status');
+  const saved = $('saved');
   $('save').addEventListener('click', async () => {
     await saveSettings(read());
-    status.textContent = '✅ נשמר';
-    setTimeout(() => (status.textContent = ''), 2500);
+    saved.textContent = 'נשמר';
+    setTimeout(() => (saved.textContent = ''), 2500);
   });
   $('test').addEventListener('click', async () => {
     status.textContent = 'בודק…';

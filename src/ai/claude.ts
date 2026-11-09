@@ -160,9 +160,9 @@ function cost(model: string, usage: BetaUsage | undefined, searches: number): nu
 }
 
 function friendlyError(e: unknown): string {
-  if (e instanceof Anthropic.AuthenticationError) return 'מפתח ה-API לא תקין. תבדוק אותו בהגדרות (⚙️).';
+  if (e instanceof Anthropic.AuthenticationError) return 'מפתח ה-API לא תקין. תבדוק אותו בהגדרות';
   if (e instanceof Anthropic.PermissionDeniedError) return 'למפתח הזה אין הרשאה למודל. תבחר מודל אחר בהגדרות.';
-  if (e instanceof Anthropic.RateLimitError) return 'יותר מדי בקשות כרגע – תחכה דקה ותנסה שוב.';
+  if (e instanceof Anthropic.RateLimitError) return 'יותר מדי בקשות כרגע. תחכה דקה ותנסה שוב';
   if (e instanceof Anthropic.BadRequestError) {
     const msg = e.message ?? '';
     if (/credit|balance|billing/i.test(msg)) return 'נגמר הקרדיט בחשבון Anthropic. צריך להטעין ב-console.anthropic.com.';
@@ -240,7 +240,7 @@ async function runClaude(
         } else if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
           for (const r of block.content) searchSources.push({ title: r.title, url: r.url });
         } else if (block.type === 'tool_use' && block.name === toolName) {
-          cb.onStatus('כותב…');
+          cb.onStatus('כותב את התשובות');
         }
       });
 
@@ -249,7 +249,7 @@ async function runClaude(
 
       if (msg.stop_reason === 'pause_turn') {
         messages.push({ role: 'assistant', content: msg.content as BetaContentBlockParam[] });
-        cb.onStatus('ממשיך לחפש…');
+        cb.onStatus('ממשיך לחפש');
         continue;
       }
       if (msg.stop_reason === 'refusal') {
@@ -299,7 +299,7 @@ export async function solveWithClaude(
     return {
       answers: [{ question: 'תשובה', part: '', answer: out.text, field_id: null, option: null }],
       sources: dedupeSources(out.searchSources).slice(0, 12),
-      notes: 'התשובה חזרה כטקסט ולא שויכה לשדות – תעתיק ידנית.',
+      notes: 'התשובה חזרה כטקסט ולא שויכה לשדות, אז צריך להעתיק ידנית',
       model: out.model,
       searches: out.searches,
       videos: [],
@@ -343,8 +343,8 @@ export async function testKey(settings: Settings): Promise<string> {
   const client = new Anthropic({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true, baseURL: settings.apiBaseUrl || undefined });
   try {
     const m = await client.models.retrieve(settings.model);
-    return `✅ החיבור עובד (${m.display_name})`;
+    return `החיבור עובד · ${m.display_name}`;
   } catch (e) {
-    return `❌ ${friendlyError(e)}`;
+    return friendlyError(e);
   }
 }

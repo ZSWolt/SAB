@@ -152,7 +152,7 @@ function pickSelect(sel: HTMLSelectElement, wanted: string): boolean {
 export function fillFields(items: FillItem[], doc: Document = document): FillOutcome[] {
   return items.map((item) => {
     const group = findField(item.fieldId, doc);
-    if (!group) return { fieldId: item.fieldId, ok: false, message: 'השדה לא נמצא בדף (אולי הדף השתנה – קרא שוב)' };
+    if (!group) return { fieldId: item.fieldId, ok: false, message: 'השדה לא נמצא. אולי הדף השתנה, אז כדאי לפתור שוב' };
     const el = group.elements[0];
     try {
       switch (group.kind) {

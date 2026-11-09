@@ -217,7 +217,7 @@ async function readDocuments(refs: DocumentRef[], signal: AbortSignal, post: (m:
   const texts: StoryBlock[] = [];
   const status: NonNullable<SolveResult['documents']> = [];
   for (const ref of refs.slice(0, MAX_DOCS)) {
-    post({ type: 'status', text: `📄 קורא את "${ref.title}"…` });
+    post({ type: 'status', text: `קורא את "${ref.title}"` });
     try {
       const doc = await fetchDocument(ref, signal);
       if (doc.kind === 'pdf') pdfs.push({ title: ref.title, base64: doc.base64 });
@@ -265,7 +265,7 @@ chrome.runtime.onConnect.addListener((port) => {
         chrome.runtime.openOptionsPage();
         throw new SolveError('צריך להכניס מפתח API של Claude בהגדרות (נפתח לך עכשיו).');
       }
-      post({ type: 'status', text: settings.readAllPages ? 'קורא את הדף (וכל העמודים שלו, אם יש)…' : 'קורא את הדף…' });
+      post({ type: 'status', text: settings.readAllPages ? 'קורא את הדף וכל העמודים שלו' : 'קורא את הדף' });
       const snaps = await collect(tabId, settings.readAllPages);
       const openerId = await openerOf(tabId);
       const opener = openerId !== null ? await collect(openerId, false) : [];
@@ -327,15 +327,15 @@ chrome.runtime.onConnect.addListener((port) => {
       const videoStatus: SolveResult['videos'] = [];
       let videoCost = 0;
       if (videoUrls.length && !settings.geminiApiKey) {
-        for (const url of videoUrls) videoStatus.push({ url, ok: false, message: 'אין מפתח Gemini בהגדרות – הסרטון לא נצפה' });
+        for (const url of videoUrls) videoStatus.push({ url, ok: false, message: 'אין מפתח Gemini בהגדרות, אז הסרטון לא נצפה' });
       } else if (videoUrls.length) {
         const questions =
           snaps.flatMap((s) => s.fields.map((f) => f.context)).join('\n---\n') ||
           snaps.map((s) => s.fullText).join('\n').slice(0, 6000);
         for (const [i, url] of videoUrls.entries()) {
-          post({ type: 'status', text: `🎬 Gemini צופה בסרטון ${i + 1} מתוך ${videoUrls.length}… (סרטון ארוך יכול לקחת דקה-שתיים)` });
+          post({ type: 'status', text: `Gemini צופה בסרטון ${i + 1} מתוך ${videoUrls.length}. סרטון ארוך יכול לקחת דקה או שתיים` });
           try {
-            const v = await watchVideoCached(settings, url, questions, abort.signal, (text) => post({ type: 'status', text: `🎬 ${text}` }));
+            const v = await watchVideoCached(settings, url, questions, abort.signal, (text) => post({ type: 'status', text }));
             videoNotes.push({ url, text: v.text });
             videoStatus.push({ url, ok: true, message: v.cached ? 'מהזיכרון (בחינם)' : undefined });
             videoCost += v.costUsd;
@@ -363,7 +363,7 @@ chrome.runtime.onConnect.addListener((port) => {
         onThinking: (text: string) => post({ type: 'thinking', text }),
         onStatus: (text: string) => post({ type: 'status', text }),
       };
-      post({ type: 'status', text: req.mode === 'review' ? 'Claude בודק את התשובות שלך…' : 'Claude עובד על התשובות…' });
+      post({ type: 'status', text: req.mode === 'review' ? 'Claude בודק את התשובות שלך' : 'Claude עובד על התשובות' });
 
       if (req.mode === 'review') {
         const review = await reviewWithClaude(settings, reviewSystemPrompt(settings), content, callbacks, abort.signal);

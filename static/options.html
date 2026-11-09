@@ -3,105 +3,187 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SAB – הגדרות</title>
+<title>SAB הגדרות</title>
+<!-- Design approach: unslop by Damir Sokolovsky (@heydamir), CC BY 4.0 -->
 <style>
-  :root { --bg:#f9fafb; --fg:#111827; --muted:#6b7280; --line:#e5e7eb; --accent:#4f46e5; --card:#fff; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#0b1120; --fg:#f3f4f6; --muted:#9ca3af; --line:#374151; --accent:#818cf8; --card:#111827; } }
-  body { margin:0; background:var(--bg); color:var(--fg); font-family:"Segoe UI",Arial,sans-serif; font-size:15px; }
-  main { max-width:640px; margin:32px auto; padding:0 16px; }
-  h1 { font-size:22px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
-  label { display:block; font-weight:600; margin:12px 0 6px; }
-  input[type=text], input[type=password], select, textarea { width:100%; box-sizing:border-box; padding:9px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); font-size:14px; }
-  textarea { min-height:80px; }
-  .hint { color:var(--muted); font-size:13px; margin-top:4px; }
-  .row { display:flex; gap:8px; align-items:center; margin-top:12px; flex-wrap:wrap; }
-  button { padding:9px 16px; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:#fff; font-size:14px; cursor:pointer; }
-  button.secondary { background:transparent; color:var(--accent); }
-  .check { display:flex; gap:8px; align-items:center; font-weight:400; }
-  #status { font-size:14px; }
-  kbd { background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:1px 6px; font-size:13px; }
-  a { color:var(--accent); }
+  :root {
+    --bg: #fafafa; --card: #ffffff; --raised: #f4f4f5; --line: rgba(23, 23, 23, 0.08); --line-strong: rgba(23, 23, 23, 0.14);
+    --text: #171717; --text-2: #525252; --muted: #737373;
+    --ink: #1d4ed8; --ink-hover: #1e40af; --on-ink: #ffffff; --sel: #1d4ed8; --ring: rgba(29, 78, 216, 0.14);
+    --pos: #16a34a; --neg: #dc2626;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --font: "SAB Plex Hebrew", "IBM Plex Sans Hebrew", "Segoe UI", Arial, sans-serif;
+    --mono: "SAB Plex Mono", "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141415; --card: #19191b; --raised: #232325; --line: rgba(237, 237, 237, 0.08); --line-strong: rgba(237, 237, 237, 0.14);
+      --text: #ededed; --text-2: #a1a1a6; --muted: #85858b;
+      --ink: #e9e9ea; --ink-hover: #ffffff; --on-ink: #141415; --sel: #7aa2ff; --ring: rgba(122, 162, 255, 0.2);
+      --pos: #4cc38a; --neg: #e5484d;
+    }
+  }
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 20px; }
+  main { max-width: 640px; margin: 0 auto; padding: 40px 24px 96px; display: flex; flex-direction: column; gap: 16px; }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  header h1 { font-size: 28px; line-height: 32px; font-weight: 500; margin: 0; }
+  header .brand { font-size: 16px; font-weight: 500; color: var(--text-2); }
+  header small { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-inline-start: auto; }
+
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+  section h2 { font-size: 16px; line-height: 24px; font-weight: 500; margin: 0; }
+  section > p { margin: -8px 0 0; color: var(--text-2); font-size: 13px; }
+  .field { display: flex; flex-direction: column; gap: 8px; }
+  .field > label { font-size: 13px; color: var(--text-2); }
+  .hint { color: var(--muted); font-size: 12px; line-height: 16px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 560px) { .two { grid-template-columns: 1fr; } }
+
+  input[type=text], input[type=password], select, textarea {
+    width: 100%; height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card);
+    color: var(--text); font: inherit; font-size: 14px; transition: border-color 150ms var(--ease);
+  }
+  input[type=password], input[type=text] { direction: ltr; text-align: right; font-family: var(--mono); font-size: 13px; }
+  textarea { height: auto; min-height: 88px; padding: 8px 12px; resize: vertical; line-height: 20px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--ring); border-color: var(--sel); }
+  ::placeholder { color: var(--muted); }
+  .check { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+  .check input { accent-color: var(--sel); width: 16px; height: 16px; margin: 2px 0 0; flex: none; }
+  .check span { display: flex; flex-direction: column; gap: 2px; }
+  .check b { font-weight: 400; }
+
+  .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .plans { grid-template-columns: 1fr; } }
+  .plan { background: var(--raised); border-radius: 12px; padding: 12px 16px; font-size: 13px; color: var(--text-2); }
+  .plan b { display: block; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+
+  button { font: inherit; height: 36px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--card); color: var(--text);
+    cursor: pointer; font-size: 13px; transition: background-color 150ms var(--ease), border-color 150ms var(--ease), transform 120ms var(--ease); }
+  button:hover { background: var(--raised); }
+  button:active { transform: scale(0.98); }
+  button.primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); font-weight: 500; }
+  button.primary:hover { background: var(--ink-hover); border-color: var(--ink-hover); }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .status { font-size: 13px; color: var(--text-2); }
+  a { color: var(--text); text-underline-offset: 2px; }
+
+  details summary { cursor: pointer; font-size: 13px; color: var(--text-2); }
+  details[open] summary { margin-bottom: 12px; }
+  details .field + .field { margin-top: 12px; }
+
+  .keys { display: flex; flex-direction: column; }
+  .keys div { display: flex; align-items: center; gap: 12px; min-height: 36px; border-bottom: 1px solid var(--line); }
+  .keys div:last-child { border-bottom: 0; }
+  .keys span:first-child { flex: 1; }
+  kbd { font-family: var(--mono); font-size: 12px; line-height: 20px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--line-strong); background: var(--raised); color: var(--text-2); }
+  .kbd { display: inline-flex; gap: 4px; direction: ltr; }
+
+  .bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg); border-top: 1px solid var(--line); }
+  .bar .row { max-width: 640px; margin: 0 auto; padding: 12px 24px; }
 </style>
 </head>
 <body>
 <main>
-  <h1>⚡ SAB – עוזר משימות · הגדרות</h1>
+  <header>
+    <h1>הגדרות</h1>
+    <span class="brand">SAB עוזר משימות</span>
+    <small id="version"></small>
+  </header>
 
-  <div class="card">
-    <label for="apiKey">מפתח API של Claude</label>
-    <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off">
-    <div class="hint">משיגים ב-<a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a> → API Keys. המפתח נשמר רק במחשב שלך (chrome.storage) ונשלח רק ל-Anthropic.</div>
-
-    <label for="model">מודל</label>
-    <select id="model"></select>
-
-    <label for="effort">רמת מאמץ</label>
-    <select id="effort">
-      <option value="medium">בינונית – מהיר יותר</option>
-      <option value="high">גבוהה (מומלץ)</option>
-      <option value="xhigh">גבוהה מאוד – לשאלות קשות</option>
-      <option value="max">מקסימלית – הכי מדויק, הכי איטי ויקר</option>
-    </select>
-
-    <label for="answerLength">אורך תשובות</label>
-    <select id="answerLength">
-      <option value="short">קצר</option>
-      <option value="normal">רגיל – לפי מה שהשאלה דורשת</option>
-      <option value="long">מפורט</option>
-    </select>
-
-    <label class="check"><input id="autoFill" type="checkbox"> למלא אוטומטית את התשובות בדף כשהן מוכנות (בלי לשלוח)</label>
-    <label class="check"><input id="readAllPages" type="checkbox"> לעבור על כל העמודים במשימה (כפתורי 1 2 3 בתחתית) – קורא כל עמוד וחוזר לעמוד שהיית בו</label>
-
-    <label for="extraInstructions">הוראות קבועות ל-AI (לא חובה)</label>
-    <textarea id="extraInstructions" placeholder='למשל: "אני לומד 5 יח"ל היסטוריה", "תכתוב קצת פחות מושלם, כמו תלמיד"'></textarea>
-
-    <label for="styleSample">✍️ כתוב כמוני (לא חובה)</label>
-    <textarea id="styleSample" style="min-height:110px" placeholder="הדבק כאן 1–3 פסקאות שכתבת בעצמך (למשל תשובה ממבחן או עבודה). התשובות ייכתבו באותו סגנון – אוצר מילים, אורך משפטים ורמת רשמיות."></textarea>
-    <div class="hint">רק הסגנון מועתק, לא התוכן. הטקסט נשמר רק אצלך ונשלח ל-Claude יחד עם המשימה.</div>
-
-
-  </div>
-
-  <div class="card">
-    <b>🎬 סרטונים (Gemini)</b>
-    <div class="hint">כשיש סרטון יוטיוב במשימה, Gemini של Google צופה בו – רואה וגם שומע – וכותב תיאור מפורט, ו-Claude עונה לפיו. בלי מפתח, הסרטונים פשוט מדולגים.</div>
-    <label for="geminiApiKey">מפתח Gemini API</label>
-    <input id="geminiApiKey" type="password" placeholder="AIza..." autocomplete="off">
-    <div class="hint">משיגים בחינם ב-<a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>. רק סרטונים ציבוריים עובדים (לא פרטיים / לא רשומים).</div>
-    <label for="geminiModel">מודל לסרטונים</label>
-    <select id="geminiModel"></select>
-    <div class="hint" style="line-height:1.7">
-      <b>חינם:</b> מגבלה של בקשות ליום ועד 8 שעות סרטונים ביום. Google יכולה להשתמש במה שנשלח כדי לשפר את המוצרים שלה (ואנשים אצלם עשויים לקרוא את זה).<br>
-      <b>בתשלום</b> (מפעילים חיוב ב-AI Studio): בלי מגבלת אורך, מגבלות בקשות גבוהות יותר, המידע לא משמש לאימון, ואפשר להשתמש ב-Pro. סרטון של 10 דקות עולה בערך 15–30 אגורות ב-Flash.
+  <section>
+    <h2>Claude</h2>
+    <p>עונה על המשימות, מחפש באינטרנט ובודק את התשובות שלך</p>
+    <div class="field">
+      <label for="apiKey">מפתח API</label>
+      <input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+      <div class="hint">משיגים ב-<a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a> תחת API Keys. המפתח נשמר רק בדפדפן שלך ונשלח רק ל-Anthropic</div>
     </div>
-    <div class="row"><button id="testGemini" class="secondary">בדוק חיבור ל-Gemini</button><span id="geminiStatus"></span></div>
-
-    <details><summary class="hint">מתקדם</summary>
-      <label for="apiBaseUrl">כתובת API (לבדיקות בלבד)</label>
-      <input id="apiBaseUrl" type="text" placeholder="ריק = https://api.anthropic.com">
-      <label for="geminiBaseUrl">כתובת Gemini API (לבדיקות בלבד)</label>
-      <input id="geminiBaseUrl" type="text" placeholder="ריק = https://generativelanguage.googleapis.com">
-    </details>
-
-    <div class="row">
-      <button id="save">שמור</button>
-      <button id="test" class="secondary">בדוק חיבור</button>
-      <span id="status"></span>
+    <div class="two">
+      <div class="field">
+        <label for="model">מודל</label>
+        <select id="model"></select>
+      </div>
+      <div class="field">
+        <label for="effort">רמת מאמץ</label>
+        <select id="effort">
+          <option value="medium">בינונית, מהיר יותר</option>
+          <option value="high">גבוהה, מומלץ</option>
+          <option value="xhigh">גבוהה מאוד, לשאלות קשות</option>
+          <option value="max">מקסימלית, הכי איטי ויקר</option>
+        </select>
+      </div>
     </div>
-  </div>
+    <div class="row"><button id="test">בדוק חיבור</button><span id="status" class="status" role="status"></span></div>
+  </section>
 
-  <div class="card">
-    <b>קיצורי מקלדת</b>
-    <div class="hint" style="line-height:2">
-      <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> פתח/סגור את העוזר (גם אחרי שהסתרת את הכפתור)<br>
-      <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> קרא את הדף ופתור<br>
-      <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> מלא את התשובות בדף<br>
-      לשינוי: <a href="#" id="shortcuts">chrome://extensions/shortcuts</a>
+  <section>
+    <h2>תשובות</h2>
+    <div class="field">
+      <label for="answerLength">אורך</label>
+      <select id="answerLength">
+        <option value="short">קצר</option>
+        <option value="normal">לפי מה שהשאלה דורשת</option>
+        <option value="long">מפורט</option>
+      </select>
     </div>
-  </div>
+    <label class="check"><input id="readAllPages" type="checkbox"><span><b>לעבור על כל העמודים במשימה</b><span class="hint">כשיש כפתורי 1 2 3 בתחתית. קורא כל עמוד וחוזר לעמוד שהיית בו</span></span></label>
+    <label class="check"><input id="autoFill" type="checkbox"><span><b>למלא אוטומטית כשהתשובות מוכנות</b><span class="hint">אף פעם לא שולח. תמיד תעבור על התשובות לפני ההגשה</span></span></label>
+    <div class="field">
+      <label for="styleSample">כתוב כמוני</label>
+      <textarea id="styleSample" style="min-height:112px" placeholder="פסקה או שתיים שכתבת בעצמך, למשל תשובה ממבחן או מעבודה"></textarea>
+      <div class="hint">רק הסגנון מועתק, לא התוכן: אוצר מילים, אורך משפטים ורמת רשמיות</div>
+    </div>
+    <div class="field">
+      <label for="extraInstructions">הוראות קבועות</label>
+      <textarea id="extraInstructions" placeholder='למשל "אני לומד 5 יח"ל היסטוריה"'></textarea>
+    </div>
+  </section>
+
+  <section>
+    <h2>סרטונים</h2>
+    <p>כשיש סרטון יוטיוב במשימה, Gemini של Google צופה בו, רואה ושומע, ו-Claude עונה לפי התיאור. בלי מפתח הסרטונים מדולגים</p>
+    <div class="field">
+      <label for="geminiApiKey">מפתח Gemini API</label>
+      <input id="geminiApiKey" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false">
+      <div class="hint">משיגים בחינם ב-<a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>. רק סרטונים ציבוריים עובדים</div>
+    </div>
+    <div class="field">
+      <label for="geminiModel">מודל לסרטונים</label>
+      <select id="geminiModel"></select>
+    </div>
+    <div class="plans">
+      <div class="plan"><b>חינם</b>מגבלה יומית ועד 8 שעות סרטונים ביום. Google יכולה להשתמש במה שנשלח לשיפור המוצרים שלה</div>
+      <div class="plan"><b>בתשלום</b>בלי מגבלת אורך, המידע לא משמש לאימון, ויש גישה ל-Pro. סרטון של 10 דקות עולה בערך 15 עד 30 אגורות</div>
+    </div>
+    <div class="row"><button id="testGemini">בדוק חיבור ל-Gemini</button><span id="geminiStatus" class="status" role="status"></span></div>
+  </section>
+
+  <section>
+    <h2>קיצורי מקלדת</h2>
+    <div class="keys">
+      <div><span>פתח או סגור את העוזר, גם אחרי שהסתרת אותו</span><span class="kbd"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>S</kbd></span></div>
+      <div><span>קרא את הדף ופתור</span><span class="kbd"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>A</kbd></span></div>
+      <div><span>מלא את התשובות בדף</span><span class="kbd"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>F</kbd></span></div>
+    </div>
+    <div class="hint">אפשר לשנות אותם ב-<a href="#" id="shortcuts">chrome://extensions/shortcuts</a></div>
+  </section>
+
+  <details>
+    <summary>מתקדם</summary>
+    <div class="field">
+      <label for="apiBaseUrl">כתובת API של Claude, לבדיקות בלבד</label>
+      <input id="apiBaseUrl" type="text" placeholder="https://api.anthropic.com">
+    </div>
+    <div class="field">
+      <label for="geminiBaseUrl">כתובת API של Gemini, לבדיקות בלבד</label>
+      <input id="geminiBaseUrl" type="text" placeholder="https://generativelanguage.googleapis.com">
+    </div>
+  </details>
 </main>
+<div class="bar"><div class="row"><button id="save" class="primary">שמור</button><span id="saved" class="status" role="status"></span></div></div>
 <script type="module" src="options.js"></script>
 </body>
 </html>
