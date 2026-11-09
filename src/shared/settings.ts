@@ -7,6 +7,8 @@ export interface Settings {
   autoFill: boolean;
   answerLength: 'short' | 'normal' | 'long';
   extraInstructions: string;
+  /** A few paragraphs the student wrote, so answers sound like them. */
+  styleSample: string;
   /** Dev / tests only: point the SDK at another server. */
   apiBaseUrl: string;
   /** Google AI Studio key, used only to watch videos. Empty = videos are skipped. */
@@ -34,6 +36,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoFill: false,
   answerLength: 'normal',
   extraInstructions: '',
+  styleSample: '',
   apiBaseUrl: '',
   geminiApiKey: '',
   geminiModel: 'gemini-3.8-flash',

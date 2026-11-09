@@ -17,10 +17,33 @@ function sse(res, events) {
   res.end();
 }
 
+function toolEvents(body, name, input) {
+  return [
+    { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: body.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1000, output_tokens: 1 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_1', name, input: {} } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: input } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 200 } },
+    { type: 'message_stop' },
+  ];
+}
+
+let skipIframeField = true;
+
 function mockAnswer(body) {
   const text = body.messages[0].content.map((c) => c.text ?? '').join('\n');
   const fields = JSON.parse(text.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
-  const answers = fields.map((f, i) => ({
+  if (body.tools.some((t) => t.name === 'submit_review')) {
+    const items = fields.filter((f) => f.already_filled).map((f) => ({
+      question: 'שאלה 5', part: '', field_id: f.id, grade: 55, correct: 'הזכרת את הפרפרים', missing: 'חסר קשר לדמות הכלה', improved: 'תשובה משופרת מהבדיקה',
+    }));
+    return toolEvents(body, 'submit_review', JSON.stringify({ items, overall: 'כיוון טוב', sources: [] }));
+  }
+  // first time on the main task page: "forget" the field in the iframe, to test "complete the missing ones"
+  const isOnly = text.includes('תענה **רק** עליהם');
+  const visible = !isOnly && skipIframeField && fields.length === 3 ? fields.filter((f) => f.kind !== 'text') : fields;
+  if (visible !== fields) skipIframeField = false;
+  const answers = visible.map((f, i) => ({
     question: `שאלה ${i + 1}`,
     part: '',
     answer: f.kind === 'radio' ? 'כי הוא כתב אותו' : f.kind === 'text' ? '1966' : 'תשובה לבדיקה',
@@ -68,7 +91,11 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html' }[url.pathname];
+  if (url.pathname === '/story.pdf') {
+    res.writeHead(200, { 'content-type': 'application/pdf' });
+    return res.end('%PDF-1.4\n% fake story pdf for the test\n%%EOF');
+  }
+  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html' }[url.pathname];
   if (!file) return res.writeHead(404).end();
   let html = readFileSync(resolve('tests/fixtures', file), 'utf8');
   // the iframe is served from another origin (127.0.0.1 vs localhost) to test cross-origin frames
@@ -99,7 +126,7 @@ try {
 
   const page = await ctx.newPage();
   if (process.env.SHOT) await page.setViewportSize({ width: 1100, height: 760 });
-  await page.goto(`http://localhost:${port}/task.html`);
+  await page.goto(`http://localhost:${port}/task.html?attempt=7`);
   await page.waitForSelector('#sab-helper-host', { state: 'attached' });
   console.log('✓ button injected');
 
@@ -127,8 +154,23 @@ try {
 
   // solve
   await page.click('#sab-helper-host >> .btn.primary.big');
-  await page.waitForSelector('#sab-helper-host >> text=/מוכן – 3 תשובות/', { timeout: 20000 });
+  await page.waitForSelector('#sab-helper-host >> text=/מוכן – 2 תשובות/', { timeout: 20000 });
   const req = requests.at(-1);
+  const doc = req.body.messages[0].content.find((c) => c.type === 'document');
+  assert.ok(doc, 'PDF sent as a document block');
+  assert.equal(Buffer.from(doc.source.data, 'base64').toString().slice(0, 5), '%PDF-');
+  const storyBlock = req.body.messages[0].content.find((c) => c.type === 'text' && c.text.includes('<story'));
+  assert.deepEqual(storyBlock.cache_control, { type: 'ephemeral' }, 'story block is cached');
+  await page.waitForSelector('#sab-helper-host >> text=/📄 נקרא/');
+  console.log('✓ PDF linked in the task is downloaded and sent; story block marked for caching');
+
+  await page.waitForSelector('#sab-helper-host >> text=/1 שדות לא קיבלו תשובה/');
+  await page.click('#sab-helper-host >> text=השלם את החסר');
+  await page.waitForSelector('#sab-helper-host >> text=/מוכן – 3 תשובות/', { timeout: 20000 });
+  const onlyReq = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
+  assert.ok(onlyReq.includes('תענה **רק** עליהם'));
+  assert.equal(JSON.parse(onlyReq.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]).length, 1);
+  console.log('✓ missing-answer warning, and "complete the missing" answers only that field');
   const userText = req.body.messages[0].content.map((c) => c.text ?? '').join('\n');
   assert.ok(userText.includes('הכלה יצאה לצוד פרפרים'), 'story sent');
   assert.ok(req.body.tools.some((t) => t.type === 'web_search_20260209'), 'web search tool sent');
@@ -159,8 +201,51 @@ try {
   await page.waitForFunction(() => document.querySelector('#q1').value === '');
   console.log('✓ undo fill');
 
+  // same page again → saved answers, no new request
+  const before = requests.length;
+  await page.click('#sab-helper-host >> .tab >> text=משימה');
+  await page.click('#sab-helper-host >> .btn.primary.big');
+  await page.waitForSelector('#sab-helper-host >> text=/כבר פתרת את הדף הזה/');
+  assert.equal(requests.length, before, 'no API call for an already solved page');
+  console.log('✓ already solved page: saved answers shown for free');
+
+  // page 2 of the same task (no story on it) → story comes from memory
+  // (same tab, like clicking "next page")
+  const page2 = page;
+  await page2.goto(`http://localhost:${port}/page2.html?attempt=7`);
+  await page2.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await page2.keyboard.press('Alt+Shift+A');
+  await page2.waitForSelector('#sab-helper-host >> text=/מוכן – 1 תשובות/', { timeout: 20000 });
+  const p2 = requests.at(-1).body.messages[0].content;
+  const p2text = p2.map((c) => c.text ?? '').join('\n');
+  assert.ok(p2text.includes('הכלה יצאה לצוד פרפרים'), 'story from page 1');
+  assert.ok(p2.some((c) => c.type === 'document'), 'PDF from page 1');
+  assert.ok(p2text.includes('<previous_pages'), 'earlier answers included');
+  await page2.waitForSelector('#sab-helper-host >> text=/הסיפור נלקח מעמוד קודם/');
+  console.log('✓ page 2: story + PDF + earlier answers remembered from page 1');
+
+  // history tab
+  await page2.click('#sab-helper-host >> .tab >> text=היסטוריה');
+  await page2.waitForSelector('#sab-helper-host >> text=/הוצאה החודש/');
+  await page2.waitForSelector('#sab-helper-host >> .hist >> text=משימה בספרות');
+  console.log('✓ history tab lists the task with its cost');
+
+  // check me
+  await page2.fill('#q5', 'הפרפרים מסמלים חופש');
+  await page2.click('#sab-helper-host >> .tab >> text=משימה');
+  await page2.click('#sab-helper-host >> text=/בדוק אותי/');
+  await page2.waitForSelector('#sab-helper-host >> text=/ציון ממוצע: 55/', { timeout: 20000 });
+  const rv = requests.at(-1).body;
+  assert.ok(rv.tools.some((t) => t.name === 'submit_review'));
+  assert.ok(rv.messages[0].content.map((c) => c.text ?? '').join('\n').includes('הפרפרים מסמלים חופש'));
+  await page2.click('#sab-helper-host >> text=/החלף בגרסה המשופרת/');
+  await page2.waitForFunction(() => document.querySelector('#q5').value === 'תשובה משופרת מהבדיקה');
+  console.log('✓ check-me: grade + comments, and "replace with improved" fills the field');
+  await page.goto(`http://localhost:${port}/task.html?attempt=7`);
+  await page.waitForSelector('#sab-helper-host', { state: 'attached' });
+
   // popup window
-  await page.keyboard.press('Alt+Shift+S'); // close panel so the button is clickable
+  // (panel is closed after navigation, so the button is clickable)
   const [popup] = await Promise.all([ctx.waitForEvent('page'), page.click('#openTask')]);
   await popup.waitForLoadState();
   await popup.waitForSelector('#sab-helper-host', { state: 'attached' });

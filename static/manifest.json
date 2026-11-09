@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "קורא את המשימה בדף (כולל חלונות קופצים ובר הסיפור), עונה עם Claude ומקורות אמינים, וממלא את התשובות.",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "tabs", "scripting", "activeTab"],
+  "permissions": ["storage", "unlimitedStorage", "tabs", "scripting", "activeTab"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js", "type": "module" },
   "content_scripts": [

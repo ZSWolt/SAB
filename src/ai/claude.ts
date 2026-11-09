@@ -7,7 +7,7 @@ import type {
   BetaUsage,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { MODELS, type Settings } from '../shared/settings';
-import type { Answer, SolveResult, Source } from '../shared/types';
+import type { Answer, ReviewItem, ReviewResult, SolveResult, Source } from '../shared/types';
 
 export interface SolveCallbacks {
   onSearch(query: string): void;
@@ -56,6 +56,49 @@ const ANSWER_TOOL: BetaToolUnion = {
   },
 };
 
+const SOURCES_SCHEMA = {
+  type: 'array',
+  items: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['title', 'url'],
+    properties: { title: { type: 'string' }, url: { type: 'string' } },
+  },
+};
+
+const REVIEW_TOOL: BetaToolUnion = {
+  name: 'submit_review',
+  description: 'מגיש את הבדיקה של התשובות שהתלמיד כתב: ציון, מה נכון, מה חסר וגרסה משופרת לכל תשובה.',
+  strict: true,
+  eager_input_streaming: true,
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['items', 'overall', 'sources'],
+    properties: {
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['question', 'part', 'field_id', 'grade', 'correct', 'missing', 'improved'],
+          properties: {
+            question: { type: 'string' },
+            part: { type: 'string' },
+            field_id: { type: ['string', 'null'] },
+            grade: { type: 'integer', description: 'ציון 0–100 לפי מחוון בגרות' },
+            correct: { type: 'string', description: 'מה טוב ונכון בתשובה' },
+            missing: { type: 'string', description: 'מה חסר או שגוי. מחרוזת ריקה אם אין.' },
+            improved: { type: 'string', description: 'גרסה משופרת שהייתה מקבלת ניקוד מלא, בסגנון של התלמיד' },
+          },
+        },
+      },
+      overall: { type: 'string' },
+      sources: SOURCES_SCHEMA,
+    },
+  },
+};
+
 const WEB_SEARCH: BetaToolUnion = {
   type: 'web_search_20260209',
   name: 'web_search',
@@ -73,6 +116,30 @@ function isAnswer(a: unknown): a is Answer {
     (x.field_id === null || typeof x.field_id === 'string') &&
     (x.option === null || typeof x.option === 'string')
   );
+}
+
+function isReviewItem(a: unknown): a is ReviewItem {
+  const x = a as Record<string, unknown>;
+  return (
+    !!x &&
+    typeof x.question === 'string' &&
+    typeof x.part === 'string' &&
+    (x.field_id === null || typeof x.field_id === 'string') &&
+    typeof x.grade === 'number' &&
+    typeof x.correct === 'string' &&
+    typeof x.missing === 'string' &&
+    typeof x.improved === 'string'
+  );
+}
+
+export function parseReview(input: unknown): { items: ReviewItem[]; overall: string; sources: Source[] } | null {
+  const x = input as Record<string, unknown>;
+  if (!x || !Array.isArray(x.items) || !x.items.every(isReviewItem)) return null;
+  const items = (x.items as ReviewItem[]).map((i) => ({ ...i, grade: Math.max(0, Math.min(100, Math.round(i.grade))) }));
+  const sources = Array.isArray(x.sources)
+    ? (x.sources as Source[]).filter((s) => s && typeof s.url === 'string' && /^https?:\/\//.test(s.url))
+    : [];
+  return { items, overall: typeof x.overall === 'string' ? x.overall : '', sources };
 }
 
 /** Validates the tool input: the streamed JSON can come back cut off. */
@@ -110,13 +177,29 @@ function friendlyError(e: unknown): string {
 
 export class SolveError extends Error {}
 
-export async function solveWithClaude(
+interface RunOutput {
+  /** Input of the final tool call, or null if Claude answered in plain text. */
+  toolInput: unknown;
+  text: string;
+  model: string;
+  searches: string[];
+  searchSources: Source[];
+  costUsd: number;
+}
+
+/**
+ * One Claude run with web search: streams, follows pause_turn, handles refusal / max_tokens, and
+ * returns the input of the given tool (submit_answers / submit_review).
+ */
+async function runClaude(
   settings: Settings,
   system: string,
   userContent: BetaContentBlockParam[],
+  tool: BetaToolUnion,
   cb: SolveCallbacks,
   signal?: AbortSignal,
-): Promise<SolveResult> {
+): Promise<RunOutput> {
+  const toolName = (tool as { name: string }).name;
   const client = new Anthropic({
     apiKey: settings.apiKey,
     dangerouslyAllowBrowser: true,
@@ -127,7 +210,6 @@ export async function solveWithClaude(
   const searches: string[] = [];
   const searchSources: Source[] = [];
   let totalCost = 0;
-  let finalModel = settings.model;
 
   try {
     // pause_turn: the server paused a long search turn; send it back to let it continue.
@@ -138,7 +220,7 @@ export async function solveWithClaude(
           max_tokens: 32000,
           system,
           messages,
-          tools: [WEB_SEARCH, ANSWER_TOOL],
+          tools: [WEB_SEARCH, tool],
           tool_choice: { type: 'auto' },
           thinking: { type: 'adaptive', display: 'summarized' },
           output_config: { effort: settings.effort },
@@ -157,13 +239,12 @@ export async function solveWithClaude(
           }
         } else if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
           for (const r of block.content) searchSources.push({ title: r.title, url: r.url });
-        } else if (block.type === 'tool_use' && block.name === 'submit_answers') {
-          cb.onStatus('כותב את התשובות…');
+        } else if (block.type === 'tool_use' && block.name === toolName) {
+          cb.onStatus('כותב…');
         }
       });
 
       const msg = await stream.finalMessage();
-      finalModel = msg.model;
       totalCost += cost(msg.model, msg.usage, 0);
 
       if (msg.stop_reason === 'pause_turn') {
@@ -174,50 +255,77 @@ export async function solveWithClaude(
       if (msg.stop_reason === 'refusal') {
         throw new SolveError('Claude סירב לענות על הבקשה הזאת. נסה לנסח אחרת או לבחור רק חלק מהשאלות.');
       }
-
-      const tool = msg.content.find((b) => b.type === 'tool_use' && b.name === 'submit_answers');
-      if (msg.stop_reason === 'max_tokens' && tool) {
+      const call = msg.content.find((b) => b.type === 'tool_use' && b.name === toolName);
+      if (msg.stop_reason === 'max_tokens' && call) {
         throw new SolveError('התשובה נחתכה כי היא ארוכה מדי. נסה "תשובות קצרות" בהגדרות או לפתור חלק מהשאלות.');
       }
-      if (tool && tool.type === 'tool_use') {
-        const parsed = parseAnswers(tool.input);
-        if (!parsed) throw new SolveError('התשובה חזרה בפורמט לא תקין. תנסה שוב.');
-        // Prefer the sources Claude says it relied on; otherwise list what the searches returned.
-        const sources = dedupeSources(parsed.sources.length ? parsed.sources : searchSources);
-        return {
-          ...parsed,
-          sources: sources.slice(0, 12),
-          model: finalModel,
-          searches,
-          videos: [],
-          costUsd: totalCost + searches.length * 0.01,
-        };
-      }
-
-      // No tool call: fall back to the plain text as one answer.
       const text = msg.content
-        .filter((b) => b.type === 'text')
         .map((b) => (b.type === 'text' ? b.text : ''))
         .join('\n')
         .trim();
-      if (text) {
-        return {
-          answers: [{ question: 'תשובה', part: '', answer: text, field_id: null, option: null }],
-          sources: dedupeSources(searchSources).slice(0, 12),
-          notes: 'התשובה חזרה כטקסט ולא שויכה לשדות – תעתיק ידנית.',
-          model: finalModel,
-          searches,
-          videos: [],
-          costUsd: totalCost + searches.length * 0.01,
-        };
-      }
-      throw new SolveError('לא התקבלה תשובה. תנסה שוב.');
+      return {
+        toolInput: call && call.type === 'tool_use' ? call.input : null,
+        text,
+        model: msg.model,
+        searches,
+        searchSources,
+        costUsd: totalCost + searches.length * 0.01,
+      };
     }
     throw new SolveError('החיפוש לקח יותר מדי זמן. תנסה שוב או תצמצם את השאלה.');
   } catch (e) {
     if (e instanceof SolveError) throw e;
     throw new SolveError(friendlyError(e));
   }
+}
+
+export async function solveWithClaude(
+  settings: Settings,
+  system: string,
+  userContent: BetaContentBlockParam[],
+  cb: SolveCallbacks,
+  signal?: AbortSignal,
+): Promise<SolveResult> {
+  const out = await runClaude(settings, system, userContent, ANSWER_TOOL, cb, signal);
+  if (out.toolInput !== null) {
+    const parsed = parseAnswers(out.toolInput);
+    if (!parsed) throw new SolveError('התשובה חזרה בפורמט לא תקין. תנסה שוב.');
+    // Prefer the sources Claude says it relied on; otherwise list what the searches returned.
+    const sources = dedupeSources(parsed.sources.length ? parsed.sources : out.searchSources);
+    return { ...parsed, sources: sources.slice(0, 12), model: out.model, searches: out.searches, videos: [], costUsd: out.costUsd };
+  }
+  if (out.text) {
+    // No tool call: fall back to the plain text as one answer.
+    return {
+      answers: [{ question: 'תשובה', part: '', answer: out.text, field_id: null, option: null }],
+      sources: dedupeSources(out.searchSources).slice(0, 12),
+      notes: 'התשובה חזרה כטקסט ולא שויכה לשדות – תעתיק ידנית.',
+      model: out.model,
+      searches: out.searches,
+      videos: [],
+      costUsd: out.costUsd,
+    };
+  }
+  throw new SolveError('לא התקבלה תשובה. תנסה שוב.');
+}
+
+export async function reviewWithClaude(
+  settings: Settings,
+  system: string,
+  userContent: BetaContentBlockParam[],
+  cb: SolveCallbacks,
+  signal?: AbortSignal,
+): Promise<ReviewResult> {
+  const out = await runClaude(settings, system, userContent, REVIEW_TOOL, cb, signal);
+  const parsed = out.toolInput !== null ? parseReview(out.toolInput) : null;
+  if (!parsed) throw new SolveError(out.text ? `הבדיקה חזרה בלי ציונים:\n${out.text}` : 'הבדיקה חזרה בפורמט לא תקין. תנסה שוב.');
+  return {
+    ...parsed,
+    sources: dedupeSources(parsed.sources.length ? parsed.sources : out.searchSources).slice(0, 12),
+    model: out.model,
+    searches: out.searches,
+    costUsd: out.costUsd,
+  };
 }
 
 function dedupeSources(list: Source[]): Source[] {

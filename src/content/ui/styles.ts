@@ -40,7 +40,7 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 13px; col
 .status.err { background: #fee2e2; color: #991b1b; }
 .searches { font-size: 12px; color: var(--muted); margin: 4px 0 10px; }
 .searches div:not(.video)::before { content: "🔎 "; }
-.searches .video { font-size: 12px; margin-bottom: 3px; }
+.video { font-size: 12px; margin-bottom: 3px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 10px; }
 .card h3 { margin: 0 0 6px; font-size: 13px; color: var(--accent); display: flex; gap: 6px; align-items: center; }
 .card h3 span { flex: 1; }
@@ -54,5 +54,14 @@ label.check { display: flex; gap: 6px; align-items: center; font-size: 13px; col
 .fields div { font-size: 12px; border-bottom: 1px dashed var(--line); padding: 4px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toast { position: fixed; bottom: 20px; right: 20px; z-index: 2147483647; background: #111827; color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 13px; direction: rtl; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
 .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; margin-inline-end: 6px; }
+.warn { background: #fef3c7; color: #78350f; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.warn.info { background: var(--soft); color: var(--fg); display: block; }
+.warn .muted { color: #92400e; }
+.grade { border-radius: 999px; padding: 1px 9px; font-size: 13px; color: #fff; }
+.grade.good { background: #16a34a; } .grade.mid { background: #d97706; } .grade.low { background: #dc2626; }
+.answer.miss { margin-top: 6px; }
+details summary { cursor: pointer; color: var(--accent); font-size: 13px; margin: 6px 0; }
+.docs a { display: block; color: var(--accent); font-size: 13px; margin: 3px 0 8px; text-decoration: none; }
+.tab { font-size: 12px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 `;

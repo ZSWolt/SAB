@@ -1,4 +1,4 @@
-import type { Answer, FillOutcome, PortMessage, SolveResult, TaggedSnapshot } from '../../shared/types';
+import type { Answer, FillOutcome, PortMessage, ReviewItem, ReviewResult, SolveRequest, SolveResult, TaggedSnapshot, TaskSummary } from '../../shared/types';
 import { PANEL_HOST_ID } from '../text';
 import { PANEL_CSS } from './styles';
 
@@ -61,6 +61,7 @@ export class Panel {
       ['task', 'משימה'],
       ['answer', 'תשובה'],
       ['story', 'סיפור'],
+      ['history', 'היסטוריה'],
     ] as const) {
       const btn = h('button', { class: 'tab', onclick: () => this.showTab(key) }, label) as HTMLButtonElement;
       const sec = h('div', { class: 'section' });
@@ -86,6 +87,7 @@ export class Panel {
     this.buildTask();
     this.buildAnswer();
     this.buildStory();
+    this.buildHistory();
     this.showTab('task');
   }
 
@@ -96,8 +98,14 @@ export class Panel {
     this.els.scanInfo = h('div', { class: 'muted' }, 'לחץ "פתור" – אני אקרא את כל הדף, כולל חלונות פנימיים ובר הסיפור.');
     this.els.fields = h('div', { class: 'fields' });
     this.els.solveBtn = h('button', { class: 'btn primary big', onclick: () => this.solve() }, '⚡ פתור את המשימה (Alt+Shift+A)');
+    this.els.reviewBtn = h(
+      'button',
+      { class: 'btn big', title: 'כתבת תשובות בעצמך? קבל ציון והערות כמו במחוון בגרות', onclick: () => this.run('review') },
+      '✅ בדוק אותי – ציון והערות על מה שכתבתי',
+    );
     sec.append(
       this.els.solveBtn,
+      h('div', { class: 'row' }, this.els.reviewBtn),
       h('div', { class: 'row' }, h('label', { class: 'check' }, this.els.shot, 'צרף צילום מסך (לשאלות עם תמונה/גרף)')),
       this.els.note,
       h(
@@ -115,6 +123,7 @@ export class Panel {
     const sec = this.tabs.answer.sec;
     this.els.status = h('div', { class: 'status' }, 'עוד לא נפתרה משימה בדף הזה.');
     this.els.searches = h('div', { class: 'searches' });
+    this.els.banner = h('div');
     this.els.answers = h('div');
     this.els.sources = h('div', { class: 'sources' });
     this.els.fillRow = h(
@@ -125,7 +134,7 @@ export class Panel {
       h('button', { class: 'btn', onclick: () => this.copyAll() }, '📋 העתק הכול'),
     );
     this.els.fillRow.style.display = 'none';
-    sec.append(this.els.status, this.els.searches, this.els.fillRow, this.els.answers, this.els.sources);
+    sec.append(this.els.status, this.els.banner, this.els.searches, this.els.fillRow, this.els.answers, this.els.sources);
   }
 
   private buildStory() {
@@ -133,7 +142,9 @@ export class Panel {
     this.els.storyText = h('div', { class: 'story' }, 'עוד לא זוהה סיפור. לחץ "בדוק מה זוהה" או נסה את הכפתורים למטה.');
     this.els.manual = h('textarea', { placeholder: 'או הדבק כאן את הסיפור/השיר בעצמך – הוא יישלח יחד עם השאלות', style: 'min-height:90px' });
     this.els.manual.addEventListener('input', () => (this.manualStory = (this.els.manual as HTMLTextAreaElement).value));
+    this.els.docs = h('div', { class: 'docs' });
     sec.append(
+      this.els.docs,
       this.els.storyText,
       h(
         'div',
@@ -142,6 +153,62 @@ export class Panel {
         h('button', { class: 'btn', onclick: () => this.pickStory() }, '🎯 בחר אלמנט בדף כסיפור'),
       ),
       this.els.manual,
+    );
+  }
+
+  private buildHistory() {
+    const sec = this.tabs.history.sec;
+    this.els.monthCost = h('div', { class: 'status' }, 'טוען…');
+    this.els.history = h('div');
+    sec.append(this.els.monthCost, this.els.history);
+    this.tabs.history.btn.addEventListener('click', () => this.loadHistory());
+  }
+
+  private async loadHistory(data?: { tasks: TaskSummary[]; monthCost: number }) {
+    const res = data ?? (await send<{ tasks: TaskSummary[]; monthCost: number }>({ type: 'history-list' }));
+    this.els.monthCost.textContent = `הוצאה החודש: $${res.monthCost.toFixed(2)} · ${res.tasks.length} משימות שמורות`;
+    if (!res.tasks.length) {
+      this.els.history.replaceChildren(h('div', { class: 'muted' }, 'עוד אין משימות שמורות. כל משימה שתפתור תישמר כאן.'));
+      return;
+    }
+    this.els.history.replaceChildren(
+      ...res.tasks.map((t) =>
+        h(
+          'div',
+          { class: 'card hist' },
+          h(
+            'h3',
+            {},
+            h('span', { title: t.url }, t.title || t.url),
+            h('button', { class: 'btn mini', title: 'הצג תשובות', onclick: () => this.openHistory(t.key) }, '👁️'),
+            h(
+              'button',
+              {
+                class: 'btn mini',
+                title: 'מחק',
+                onclick: async () => this.loadHistory(await send({ type: 'history-delete', key: t.key })),
+              },
+              '🗑️',
+            ),
+          ),
+          h(
+            'div',
+            { class: 'muted' },
+            `${new Date(t.updatedAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })} · ${t.pages} עמודים · ${t.answers} תשובות · $${t.costUsd.toFixed(3)}`,
+          ),
+        ),
+      ),
+    );
+  }
+
+  private async openHistory(key: string) {
+    const r = await send<{ result: SolveResult; at: number; title: string; url: string } | null>({ type: 'history-open', key });
+    if (!r) return this.toast('לא נמצאו תשובות שמורות');
+    this.showTab('answer');
+    this.showResult(r.result);
+    const same = r.url.split('#')[0] === location.href.split('#')[0];
+    this.els.banner.replaceChildren(
+      h('div', { class: 'warn info' }, `📚 תשובות שמורות מ-${new Date(r.at).toLocaleString('he-IL')}${same ? '' : ' – מדף אחר, אז מילוי בדף הזה לא יעבוד (אפשר להעתיק)'}`),
     );
   }
 
@@ -196,9 +263,16 @@ export class Panel {
     const fields = snaps.flatMap((s) => s.fields.map((f) => ({ ...f, frame: s.frameId })));
     const story = [...snaps, ...opener].find((s) => s.story)?.story;
     const videos = new Set([...snaps, ...opener].flatMap((s) => (s.videos ?? []).map((v) => v.url))).size;
+    const docs = [...new Map([...snaps, ...opener].flatMap((s) => s.documents ?? []).map((d) => [d.url, d])).values()];
+    this.els.docs.replaceChildren(
+      ...(docs.length ? [h('div', { class: 'muted' }, 'מסמכים שנמצאו במשימה (יישלחו ל-Claude):')] : []),
+      ...docs.slice(0, 3).map((d) => h('a', { href: d.url, target: '_blank', rel: 'noopener' }, `📄 ${d.title}`)),
+    );
+    if (docs.length && !this.tabs.story.btn.querySelector('.dot')) this.tabs.story.btn.append(h('span', { class: 'dot' }));
     this.els.scanInfo.textContent =
       `נמצאו ${fields.length} שדות תשובה ב-${snaps.length} מסגרות` +
       (videos ? ` · ${videos} סרטוני יוטיוב 🎬` : '') +
+      (docs.length ? ` · ${docs.length} מסמכים 📄` : '') +
       (opener.length ? ' · נמצא גם החלון שפתח את המשימה' : '') +
       (story ? ' · זוהה סיפור ✓' : ' · לא זוהה סיפור');
     this.els.fields.replaceChildren(
@@ -212,16 +286,25 @@ export class Panel {
     if (!this.tabs.story.btn.querySelector('.dot')) this.tabs.story.btn.append(h('span', { class: 'dot' }));
   }
 
-  async solve() {
+  solve() {
+    return this.run('solve');
+  }
+
+  /** solve / review / complete missing fields / solve again. */
+  async run(mode: SolveRequest['mode'], extra: Pick<SolveRequest, 'onlyFields' | 'force'> = {}) {
     if (this.busy) return;
     this.busy = true;
     (this.els.solveBtn as HTMLButtonElement).disabled = true;
+    (this.els.reviewBtn as HTMLButtonElement).disabled = true;
     this.open(true);
     this.showTab('answer');
-    this.els.answers.replaceChildren();
-    this.els.sources.replaceChildren();
-    this.els.searches.replaceChildren();
-    this.els.fillRow.style.display = 'none';
+    if (!extra.onlyFields) {
+      this.els.answers.replaceChildren();
+      this.els.sources.replaceChildren();
+      this.els.searches.replaceChildren();
+      this.els.fillRow.style.display = 'none';
+    }
+    this.els.banner.replaceChildren();
     this.setStatus('קורא את הדף…', true);
 
     let screenshot: string | null = null;
@@ -235,23 +318,27 @@ export class Panel {
     const port = chrome.runtime.connect({ name: 'solve' });
     port.onMessage.addListener((m: PortMessage) => this.onPortMessage(m));
     port.onDisconnect.addListener(() => this.finish());
-    port.postMessage({
+    const req: SolveRequest = {
+      mode,
       note: (this.els.note as HTMLTextAreaElement).value,
       manualStory: this.manualStory,
       screenshot,
-    });
+      ...extra,
+    };
+    port.postMessage(req);
   }
 
   private finish() {
     this.busy = false;
     (this.els.solveBtn as HTMLButtonElement).disabled = false;
+    (this.els.reviewBtn as HTMLButtonElement).disabled = false;
   }
 
   private onPortMessage(m: PortMessage) {
     switch (m.type) {
       case 'scan':
         this.setStatus(
-          `מצאתי ${m.fields} שדות ב-${m.frames} מסגרות${m.story ? ' + סיפור' : ''}${m.videos ? ` + ${m.videos} סרטונים` : ''}${m.opener ? ' + החלון המקורי' : ''}. שולח ל-Claude…`,
+          `מצאתי ${m.fields} שדות ב-${m.frames} מסגרות${m.story ? ' + סיפור' : ''}${m.documents ? ` + ${m.documents} מסמכים` : ''}${m.videos ? ` + ${m.videos} סרטונים` : ''}${m.opener ? ' + החלון המקורי' : ''}.`,
           true,
         );
         break;
@@ -266,6 +353,22 @@ export class Panel {
         break;
       case 'result':
         this.showResult(m.result);
+        this.finish();
+        break;
+      case 'cached':
+        this.showResult(m.result);
+        this.els.banner.replaceChildren(
+          h(
+            'div',
+            { class: 'warn info' },
+            `💾 כבר פתרת את הדף הזה (${new Date(m.at).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })}) – אלה התשובות השמורות, בחינם. `,
+            h('button', { class: 'btn mini', onclick: () => this.run('solve', { force: true }) }, '🔄 פתור מחדש'),
+          ),
+        );
+        this.finish();
+        break;
+      case 'review':
+        this.showReview(m.review);
         this.finish();
         break;
       case 'error':
@@ -296,6 +399,70 @@ export class Panel {
       ...result.sources.map((s) => h('a', { href: s.url, target: '_blank', rel: 'noopener', title: s.url }, `🔗 ${s.title || s.url}`)),
     );
     this.els.fillRow.style.display = result.answers.some((a) => a.field_id) ? '' : 'none';
+
+    const banners: HTMLElement[] = [];
+    if (result.missing?.length) {
+      banners.push(
+        h(
+          'div',
+          { class: 'warn' },
+          h('b', {}, `⚠️ ${result.missing.length} שדות לא קיבלו תשובה:`),
+          ...result.missing.slice(0, 6).map((m) => h('div', { class: 'muted' }, `• ${m.context.slice(0, 90)}`)),
+          h(
+            'button',
+            { class: 'btn primary mini', onclick: () => this.run('solve', { onlyFields: result.missing!.map((m) => m.field_id) }) },
+            '✨ השלם את החסר',
+          ),
+          h('div', { class: 'muted' }, 'אם זה שדה כמו שם או כיתה – אפשר להתעלם.'),
+        ),
+      );
+    }
+    if (result.duplicates?.length) {
+      banners.push(h('div', { class: 'warn' }, `⚠️ ${result.duplicates.length} שדות קיבלו יותר מתשובה אחת – תבדוק אותם לפני מילוי.`));
+    }
+    if (result.storyFromMemory) banners.push(h('div', { class: 'warn info' }, '📖 הסיפור נלקח מעמוד קודם של אותה משימה.'));
+    for (const d of result.documents ?? []) {
+      banners.push(h('div', { class: d.ok ? 'video ok' : 'video bad' }, `${d.ok ? '📄 נקרא' : '⚠️ לא נקרא'}: ${d.title}${d.message ? ` – ${d.message}` : ''}`));
+    }
+    this.els.banner.replaceChildren(...banners);
+  }
+
+  showReview(review: ReviewResult) {
+    this.result = null;
+    const avg = review.items.length ? Math.round(review.items.reduce((n, i) => n + i.grade, 0) / review.items.length) : 0;
+    this.setStatus(`✅ הבדיקה מוכנה – ציון ממוצע: ${avg} · עלות משוערת: $${review.costUsd.toFixed(3)}${review.overall ? `\n${review.overall}` : ''}`);
+    this.els.fillRow.style.display = 'none';
+    this.els.searches.replaceChildren(...review.searches.map((q) => h('div', {}, q)));
+    this.els.answers.replaceChildren(...review.items.map((i) => this.reviewCard(i)));
+    this.els.sources.replaceChildren(
+      ...(review.sources.length ? [h('div', { class: 'muted' }, 'מקורות:')] : []),
+      ...review.sources.map((s) => h('a', { href: s.url, target: '_blank', rel: 'noopener', title: s.url }, `🔗 ${s.title || s.url}`)),
+    );
+  }
+
+  private reviewCard(i: ReviewItem): HTMLElement {
+    const outcome = h('span');
+    const cls = i.grade >= 85 ? 'grade good' : i.grade >= 60 ? 'grade mid' : 'grade low';
+    return h(
+      'div',
+      { class: 'card' },
+      h('h3', {}, h('span', {}, [i.question, i.part].filter(Boolean).join(' · ') || 'תשובה'), outcome, h('b', { class: cls }, `${i.grade}`)),
+      i.correct ? h('div', { class: 'answer' }, `👍 ${i.correct}`) : null,
+      i.missing ? h('div', { class: 'answer miss' }, `✏️ ${i.missing}`) : null,
+      h('details', {}, h('summary', {}, 'גרסה משופרת'), h('div', { class: 'answer' }, i.improved)),
+      h(
+        'div',
+        { class: 'row' },
+        h('button', { class: 'btn mini', onclick: () => this.copy(i.improved) }, '📋 העתק משופר'),
+        i.field_id
+          ? h(
+              'button',
+              { class: 'btn mini', onclick: () => this.fill([{ question: i.question, part: i.part, answer: i.improved, field_id: i.field_id, option: null }], outcome) },
+              '✍️ החלף בגרסה המשופרת',
+            )
+          : null,
+      ),
+    );
   }
 
   private answerCard(a: Answer): HTMLElement {

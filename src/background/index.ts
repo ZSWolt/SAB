@@ -1,9 +1,12 @@
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { buildUserText, systemPrompt } from '../ai/prompt';
-import { solveWithClaude, SolveError, testKey } from '../ai/claude';
+import { buildContent, collectStories, reviewSystemPrompt, systemPrompt, type PdfBlock, type StoryBlock } from '../ai/prompt';
+import { reviewWithClaude, solveWithClaude, SolveError, testKey } from '../ai/claude';
+import { checkCoverage, mergeResults } from './coverage';
+import { fetchDocument } from './documents';
+import { addCost, deleteTask, fieldsHash, findPage, getTask, listTasks, previousPagesSummary, savePage, taskKey } from './tasks';
 import { testGeminiKey, watchVideoCached } from '../ai/gemini';
 import { getSettings } from '../shared/settings';
-import type { FillItem, FillOutcome, FrameSnapshot, PortMessage, SolveRequest, SolveResult, TaggedSnapshot } from '../shared/types';
+import type { DocumentRef, FillItem, FillOutcome, FrameSnapshot, PortMessage, SolveRequest, SolveResult, TaggedSnapshot } from '../shared/types';
 
 // ---------- frames ----------
 
@@ -27,7 +30,7 @@ async function collect(tabId: number): Promise<TaggedSnapshot[]> {
     const res = await inAllFrames<FrameSnapshot>(tabId, '__sabExtract');
     return res
       .map(({ frameId, result }) => ({ ...result, frameId }))
-      .filter((s) => s.fields.length || s.story || s.fullText.trim() || s.videos?.length)
+      .filter((s) => s.fields.length || s.story || s.fullText.trim() || s.videos?.length || s.documents?.length)
       .sort((a, b) => Number(b.isTop) - Number(a.isTop) || a.frameId - b.frameId);
   } catch {
     return [];
@@ -159,6 +162,16 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const results = await getMap<unknown>('results');
         return { result: results[tabId] ?? null };
       }
+      case 'history-list':
+        return listTasks();
+      case 'history-delete':
+        await deleteTask(msg.key);
+        return listTasks();
+      case 'history-open': {
+        const task = await getTask(msg.key);
+        const page = task?.pages.at(-1);
+        return page ? { result: page.result, at: page.at, title: task!.title, url: task!.url } : null;
+      }
       case 'open-options':
         chrome.runtime.openOptionsPage();
         return true;
@@ -170,9 +183,42 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 
 // ---------- solving (long-lived port keeps the service worker alive while streaming) ----------
 
+const MAX_DOCS = 3;
+
+async function readDocuments(refs: DocumentRef[], signal: AbortSignal, post: (m: PortMessage) => void) {
+  const pdfs: PdfBlock[] = [];
+  const texts: StoryBlock[] = [];
+  const status: NonNullable<SolveResult['documents']> = [];
+  for (const ref of refs.slice(0, MAX_DOCS)) {
+    post({ type: 'status', text: `📄 קורא את "${ref.title}"…` });
+    try {
+      const doc = await fetchDocument(ref, signal);
+      if (doc.kind === 'pdf') pdfs.push({ title: ref.title, base64: doc.base64 });
+      else texts.push({ title: ref.title, text: doc.text });
+      status.push({ title: ref.title, url: ref.url, ok: true });
+    } catch (e) {
+      status.push({ title: ref.title, url: ref.url, ok: false, message: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { pdfs, texts, status };
+}
+
+function uniqueDocs(snaps: TaggedSnapshot[], opener: TaggedSnapshot[], tabUrl?: string): DocumentRef[] {
+  const out = new Map<string, DocumentRef>();
+  if (tabUrl && /\.pdf(?:$|[?#])/i.test(tabUrl)) {
+    const url = tabUrl.split('#')[0];
+    out.set(url, { url, fetchUrl: url, kind: 'pdf', title: decodeURIComponent(url.split('/').pop()?.split('?')[0] ?? 'PDF'), embedded: true });
+  }
+  for (const d of [...snaps, ...opener].flatMap((s) => s.documents ?? []).sort((a, b) => Number(b.embedded) - Number(a.embedded))) {
+    if (!out.has(d.url)) out.set(d.url, d);
+  }
+  return [...out.values()];
+}
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'solve') return;
   const tabId = port.sender?.tab?.id;
+  const tabUrl = port.sender?.tab?.url;
   const abort = new AbortController();
   let alive = true;
   port.onDisconnect.addListener(() => {
@@ -194,20 +240,59 @@ chrome.runtime.onConnect.addListener((port) => {
       const snaps = await collect(tabId);
       const openerId = await openerOf(tabId);
       const opener = openerId !== null ? await collect(openerId) : [];
+      const top = snaps.find((s) => s.isTop) ?? snaps[0];
+      const pageUrl = top?.url ?? tabUrl ?? '';
+      const key = taskKey(pageUrl);
+      const hash = fieldsHash(snaps);
+      const task = await getTask(key);
       const fields = snaps.reduce((n, s) => n + s.fields.length, 0);
-      const hasText = snaps.some((s) => s.fullText.trim() || s.story || s.videos?.length) || req.manualStory.trim() || req.screenshot;
+
+      // --- check me: grade what the student already wrote ---
+      if (req.mode === 'review' && !snaps.some((s) => s.fields.some((f) => f.value?.trim()))) {
+        throw new SolveError('לא מצאתי בדף תשובות שכתבת. תכתוב קודם את התשובות שלך, ואז תלחץ "בדוק אותי".');
+      }
+
+      // --- already solved this exact page? show it for free ---
+      const solvedPage = req.mode === 'solve' && !req.force && !req.onlyFields?.length ? findPage(task, hash) : null;
+      if (solvedPage) {
+        const results = await getMap<unknown>('results');
+        results[tabId] = solvedPage.result;
+        await chrome.storage.session.set({ results });
+        post({ type: 'cached', result: solvedPage.result, at: solvedPage.at });
+        return;
+      }
+
+      const hasText =
+        snaps.some((s) => s.fullText.trim() || s.story || s.videos?.length || s.documents?.length) ||
+        req.manualStory.trim() ||
+        req.screenshot;
       if (!hasText) throw new SolveError('לא הצלחתי לקרוא כלום מהדף. תרענן את הדף ותנסה שוב.');
+
+      // --- story & documents: from this page, or remembered from an earlier page of the task ---
+      let stories = collectStories(snaps, opener, req.manualStory);
+      let docRefs = uniqueDocs(snaps, opener, tabUrl);
+      let storyFromMemory = false;
+      if (!stories.length && !docRefs.length && task && (task.stories.length || task.documents.length)) {
+        stories = task.stories;
+        docRefs = task.documents;
+        storyFromMemory = true;
+      }
       const videoUrls = [...new Set([...snaps, ...opener].flatMap((s) => (s.videos ?? []).map((v) => v.url)))].slice(0, 4);
       post({
         type: 'scan',
         fields,
         frames: snaps.length,
-        story: [...snaps, ...opener].some((s) => s.story) || !!req.manualStory.trim(),
+        story: stories.length > 0,
         opener: opener.length > 0,
         videos: videoUrls.length,
+        documents: docRefs.length,
       });
 
-      // Videos: Gemini watches (picture + sound) and describes them; Claude then answers from the description.
+      const docs = await readDocuments(docRefs, abort.signal, post);
+      // Google Docs text joins the stories (keeps the cached block identical on later pages).
+      const allStories = [...stories, ...docs.texts.filter((t) => !stories.some((s) => s.text === t.text))];
+
+      // --- videos: Gemini watches (picture + sound) and describes them ---
       const videoNotes: { url: string; text: string }[] = [];
       const videoStatus: SolveResult['videos'] = [];
       let videoCost = 0;
@@ -230,31 +315,52 @@ chrome.runtime.onConnect.addListener((port) => {
         }
       }
 
-      const content: BetaContentBlockParam[] = [];
-      if (req.screenshot?.startsWith('data:image/')) {
-        const [meta, data] = req.screenshot.split(',');
-        const media = meta.includes('png') ? 'image/png' : 'image/jpeg';
-        content.push({ type: 'image', source: { type: 'base64', media_type: media, data } });
-        content.push({ type: 'text', text: 'למעלה: צילום מסך של המשימה כפי שהיא נראית עכשיו.' });
-      }
-      content.push({ type: 'text', text: buildUserText(snaps, opener, req.note, req.manualStory, videoNotes, videoStatus) });
+      const content = buildContent({
+        mode: req.mode,
+        snaps,
+        opener,
+        note: req.note,
+        stories: allStories,
+        pdfs: docs.pdfs,
+        videos: videoNotes,
+        missingVideos: videoStatus,
+        previousPages: req.mode === 'solve' ? previousPagesSummary(task, hash) : '',
+        onlyFields: req.onlyFields,
+        screenshot: req.screenshot,
+      });
+      const callbacks = {
+        onSearch: (query: string) => post({ type: 'search', query }),
+        onThinking: (text: string) => post({ type: 'thinking', text }),
+        onStatus: (text: string) => post({ type: 'status', text }),
+      };
+      post({ type: 'status', text: req.mode === 'review' ? 'Claude בודק את התשובות שלך…' : 'Claude עובד על התשובות…' });
 
-      const result = await solveWithClaude(
-        settings,
-        systemPrompt(settings),
-        content,
-        {
-          onSearch: (query) => post({ type: 'search', query }),
-          onThinking: (text) => post({ type: 'thinking', text }),
-          onStatus: (text) => post({ type: 'status', text }),
-        },
-        abort.signal,
-      );
+      if (req.mode === 'review') {
+        const review = await reviewWithClaude(settings, reviewSystemPrompt(settings), content, callbacks, abort.signal);
+        review.costUsd += videoCost;
+        await addCost(key, top?.title ?? '', pageUrl, review.costUsd);
+        post({ type: 'review', review });
+        return;
+      }
+
+      let result = await solveWithClaude(settings, systemPrompt(settings), content, callbacks, abort.signal);
       result.videos = videoStatus;
+      result.documents = docs.status;
+      result.storyFromMemory = storyFromMemory;
       result.costUsd += videoCost;
-      const results = await getMap<unknown>('results');
+      const addedCost = result.costUsd;
+
+      const results = await getMap<SolveResult>('results');
+      if (req.onlyFields?.length && results[tabId]) result = mergeResults(results[tabId], result);
+      Object.assign(result, checkCoverage(snaps, result));
       results[tabId] = result;
       await chrome.storage.session.set({ results });
+      await savePage(
+        key,
+        { title: top?.title ?? '', url: pageUrl, stories: allStories, documents: docRefs },
+        { url: pageUrl, fieldsHash: hash, result, at: Date.now() },
+        addedCost,
+      );
       post({ type: 'result', result });
 
       if (settings.autoFill) await sendToTop(tabId, { type: 'fill-shortcut' });

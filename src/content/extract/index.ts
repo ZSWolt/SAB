@@ -3,6 +3,7 @@ import { getText } from '../text';
 import { describeFields, findFieldGroups } from './fields';
 import { findStory } from './story';
 import { findVideos } from './videos';
+import { findDocuments } from './documents';
 
 const MAX_PAGE_TEXT = 60000;
 
@@ -46,5 +47,6 @@ export function extractFrame(doc: Document = document): FrameSnapshot {
     story: found?.info,
     fullText: found?.element === doc.body ? '' : fullText,
     videos: findVideos(doc),
+    documents: findDocuments(doc),
   };
 }
