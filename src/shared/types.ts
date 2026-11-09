@@ -10,6 +10,8 @@ export interface FieldInfo {
   options?: string[];
   /** What is already filled in. */
   value?: string;
+  /** Page number, when the task has page buttons (1, 2, 3…) and all pages were read. */
+  page?: number;
 }
 
 export interface StoryInfo {
@@ -48,6 +50,8 @@ export interface FrameSnapshot {
   fullText: string;
   videos: VideoInfo[];
   documents: DocumentRef[];
+  /** How many pages were read (page buttons at the bottom of the task). */
+  pages?: number;
 }
 
 /** A frame snapshot after the background tagged it with its frame id. */
@@ -149,7 +153,7 @@ export type PortMessage =
   | { type: 'status'; text: string }
   | { type: 'search'; query: string }
   | { type: 'thinking'; text: string }
-  | { type: 'scan'; fields: number; story: boolean; frames: number; opener: boolean; videos: number; documents: number }
+  | { type: 'scan'; fields: number; story: boolean; frames: number; opener: boolean; videos: number; documents: number; pages: number }
   | { type: 'cached'; result: SolveResult; at: number }
   | { type: 'review'; review: ReviewResult }
   | { type: 'result'; result: SolveResult }

@@ -84,6 +84,8 @@ export function findFieldGroups(doc: Document = document): FieldGroup[] {
       const type = (input.getAttribute('type') ?? '').toLowerCase();
       if (input.disabled) continue;
       if (type === 'radio' || type === 'checkbox') {
+        // the input itself is often visually hidden; check its label/container (hidden page = skip)
+        if (!isRendered(input.closest('label') ?? input.parentElement ?? input)) continue;
         const key = `${type}|${input.form ? 'form' : 'doc'}|${input.name || Math.random()}`;
         // Unnamed checkboxes are independent; unnamed radios too.
         const list = radioGroups.get(key) ?? [];
@@ -115,6 +117,7 @@ export function findFieldGroups(doc: Document = document): FieldGroup[] {
       continue;
     }
     if (role === 'radio' || role === 'checkbox') {
+      if (!isRendered(el)) continue;
       const container =
         el.closest('[role="radiogroup"], [role="group"], [role="list"], [role="listitem"]') ?? el.parentElement ?? el;
       const entry = roleGroups.get(container) ?? { kind: role as FieldKind, els: [] };

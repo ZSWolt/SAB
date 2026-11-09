@@ -95,7 +95,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/pdf' });
     return res.end('%PDF-1.4\n% fake story pdf for the test\n%%EOF');
   }
-  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html' }[url.pathname];
+  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html' }[url.pathname];
   if (!file) return res.writeHead(404).end();
   let html = readFileSync(resolve('tests/fixtures', file), 'utf8');
   // the iframe is served from another origin (127.0.0.1 vs localhost) to test cross-origin frames
@@ -243,6 +243,26 @@ try {
   await page2.click('#sab-helper-host >> text=/החלף בגרסה המשופרת/');
   await page2.waitForFunction(() => document.querySelector('#q5').value === 'תשובה משופרת מהבדיקה');
   console.log('✓ check-me: grade + comments, and "replace with improved" fills the field');
+  // a task split into pages (buttons 3 2 1 at the bottom, the page HTML is rebuilt on every switch)
+  await page.goto(`http://localhost:${port}/paged.html?attempt=99`);
+  await page.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await page.evaluate(() => document.querySelector('.pager span[data-p="2"]').click()); // the student is on page 2
+  await page.waitForFunction(() => window.__cur === 2);
+  await page.keyboard.press('Alt+Shift+A');
+  await page.waitForSelector('#sab-helper-host >> text=/מוכן – 3 תשובות/', { timeout: 30000 });
+  const pagedText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
+  for (const t of ['מה שם הגיבור', 'מי כתב את הסיפור', 'באיזו שנה נכתב', 'עמוד 3 מתוך 3']) assert.ok(pagedText.includes(t), t);
+  const pagedFields = JSON.parse(pagedText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
+  assert.deepEqual(pagedFields.map((f) => [f.id.split(':')[1], f.page]), [['p1.0', 1], ['p2.0', 2], ['p3.0', 3]]);
+  assert.equal(await page.evaluate(() => window.__cur), 2, 'back on the page the student was on');
+  console.log('✓ paged task: read all 3 pages and went back to the page the student was on');
+
+  await page.click('#sab-helper-host >> text=/מלא הכול בדף/');
+  await page.waitForFunction(() => Object.keys(window.__state).length === 3, null, { timeout: 20000 });
+  assert.deepEqual(await page.evaluate(() => window.__state), { 1: 'תשובה לבדיקה', 2: 'עגנון', 3: '1966' });
+  await page.waitForFunction(() => window.__cur === 2);
+  console.log('✓ paged task: filled answers on every page (text, radio, input) and returned to page 2');
+
   await page.goto(`http://localhost:${port}/task.html?attempt=7`);
   await page.waitForSelector('#sab-helper-host', { state: 'attached' });
 

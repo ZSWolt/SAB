@@ -273,14 +273,19 @@ export class Panel {
       ...docs.slice(0, 3).map((d) => h('a', { href: d.url, target: '_blank', rel: 'noopener' }, `📄 ${d.title}`)),
     );
     if (docs.length && !this.tabs.story.btn.querySelector('.dot')) this.tabs.story.btn.append(h('span', { class: 'dot' }));
+    const pages = Math.max(1, ...snaps.map((s) => s.pages ?? 1));
     this.els.scanInfo.textContent =
-      `נמצאו ${fields.length} שדות תשובה ב-${snaps.length} מסגרות` +
+      `נמצאו ${fields.length} שדות תשובה` +
+      (pages > 1 ? ` ב-${pages} עמודים 📑` : '') +
+      ` ב-${snaps.length} מסגרות` +
       (videos ? ` · ${videos} סרטוני יוטיוב 🎬` : '') +
       (docs.length ? ` · ${docs.length} מסמכים 📄` : '') +
       (opener.length ? ' · נמצא גם החלון שפתח את המשימה' : '') +
       (story ? ' · זוהה סיפור ✓' : ' · לא זוהה סיפור');
     this.els.fields.replaceChildren(
-      ...fields.map((f) => h('div', { title: f.context }, `[${kindLabel(f.kind)}] ${f.context.replace(/\s+/g, ' ').slice(0, 90)}`)),
+      ...fields.map((f) =>
+        h('div', { title: f.context }, `${f.page ? `עמ' ${f.page} · ` : ''}[${kindLabel(f.kind)}] ${f.context.replace(/\s+/g, ' ').slice(0, 90)}`),
+      ),
     );
     if (story) this.setStory(story.text, story.title);
   }
@@ -343,7 +348,7 @@ export class Panel {
     switch (m.type) {
       case 'scan':
         this.setStatus(
-          `מצאתי ${m.fields} שדות ב-${m.frames} מסגרות${m.story ? ' + סיפור' : ''}${m.documents ? ` + ${m.documents} מסמכים` : ''}${m.videos ? ` + ${m.videos} סרטונים` : ''}${m.opener ? ' + החלון המקורי' : ''}.`,
+          `מצאתי ${m.fields} שדות${m.pages > 1 ? ` ב-${m.pages} עמודים` : ''} ב-${m.frames} מסגרות${m.story ? ' + סיפור' : ''}${m.documents ? ` + ${m.documents} מסמכים` : ''}${m.videos ? ` + ${m.videos} סרטונים` : ''}${m.opener ? ' + החלון המקורי' : ''}.`,
           true,
         );
         break;

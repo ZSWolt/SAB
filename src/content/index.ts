@@ -1,15 +1,17 @@
 import type { FillItem } from '../shared/types';
 import { extractFrame } from './extract';
 import { tryOpenStoryBar } from './extract/story';
-import { fillFields, undoFill } from './fill';
+import { undoFill } from './fill';
+import { extractAllPages, fillAcrossPages } from './extract/pages';
 import { pageStructure } from './structure';
 import { Panel } from './ui/panel';
 
 // Runs in every frame. The background calls these through chrome.scripting.executeScript
 // (same isolated world), so each frame answers for itself, including cross-origin iframes.
 const api = {
-  __sabExtract: () => extractFrame(),
-  __sabFill: (items: FillItem[]) => fillFields(items),
+  // Reads every page when the task has page buttons (1 2 3…), unless turned off in the settings.
+  __sabExtract: (opts?: { allPages?: boolean }) => (opts?.allPages === false ? extractFrame() : extractAllPages()),
+  __sabFill: (items: FillItem[]) => fillAcrossPages(items),
   __sabUndo: () => undoFill(),
   __sabOpenStory: () => tryOpenStoryBar(),
   __sabStructure: () => pageStructure(),

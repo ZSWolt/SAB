@@ -53,6 +53,7 @@ ${writingSection(settings)}
 - גם שאלות בלי שדה (למשל שאלות שמופיעות רק כטקסט, או שאלות שעונים עליהן במסמך נפרד) – תענה עליהן עם field_id = null.
 - בשדות סימון (checkbox) עם כמה תשובות נכונות – תכתוב ב-option את כל האפשרויות הנכונות מופרדות ב-";".
 - שדה שהוא לא שאלה (שם, כיתה, ת"ז) – תשאיר אותו בלי תשובה.
+- אם המשימה מחולקת לעמודים (=== עמוד 2 מתוך 3 === בטקסט, ו-page בשדות) – תענה על השאלות של **כל** העמודים.
 
 ## בסוף
 תקרא לכלי submit_answers פעם אחת עם כל התשובות, לפי הסדר שבדף, ועם המקורות שבדקת (כתובת + כותרת). אל תכתוב את התשובות מחוץ לכלי.${extra(settings)}`;
@@ -127,6 +128,7 @@ function fieldList(snaps: TaggedSnapshot[], only?: string[]) {
       .map((f) => ({
         id: `${s.frameId}:${f.id}`,
         kind: f.kind,
+        ...(f.page ? { page: f.page } : {}),
         question_text: cut(f.context, 1500),
         ...(f.options ? { options: f.options } : {}),
         ...(f.value ? { already_filled: f.value } : {}),

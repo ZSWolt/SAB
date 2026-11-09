@@ -25,9 +25,9 @@ async function inAllFrames<T>(tabId: number, fn: string, args: unknown[] = [], f
     .map((r) => ({ frameId: r.frameId, result: r.result as T }));
 }
 
-async function collect(tabId: number): Promise<TaggedSnapshot[]> {
+async function collect(tabId: number, allPages = true): Promise<TaggedSnapshot[]> {
   try {
-    const res = await inAllFrames<FrameSnapshot>(tabId, '__sabExtract');
+    const res = await inAllFrames<FrameSnapshot>(tabId, '__sabExtract', [{ allPages }]);
     return res
       .map(({ frameId, result }) => ({ ...result, frameId }))
       .filter((s) => s.fields.length || s.story || s.fullText.trim() || s.videos?.length || s.documents?.length)
@@ -157,7 +157,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     switch (msg?.type) {
       case 'scan': {
         const opener = await openerOf(tabId);
-        return { snapshots: await collect(tabId), opener: opener !== null ? await collect(opener) : [] };
+        const { readAllPages } = await getSettings();
+        return { snapshots: await collect(tabId, readAllPages), opener: opener !== null ? await collect(opener, false) : [] };
       }
       case 'fill': {
         const out: FillOutcome[] = [];
@@ -264,9 +265,10 @@ chrome.runtime.onConnect.addListener((port) => {
         chrome.runtime.openOptionsPage();
         throw new SolveError('צריך להכניס מפתח API של Claude בהגדרות (נפתח לך עכשיו).');
       }
-      const snaps = await collect(tabId);
+      post({ type: 'status', text: settings.readAllPages ? 'קורא את הדף (וכל העמודים שלו, אם יש)…' : 'קורא את הדף…' });
+      const snaps = await collect(tabId, settings.readAllPages);
       const openerId = await openerOf(tabId);
-      const opener = openerId !== null ? await collect(openerId) : [];
+      const opener = openerId !== null ? await collect(openerId, false) : [];
       const top = snaps.find((s) => s.isTop) ?? snaps[0];
       const pageUrl = top?.url ?? tabUrl ?? '';
       const key = taskKey(pageUrl);
@@ -313,6 +315,7 @@ chrome.runtime.onConnect.addListener((port) => {
         opener: opener.length > 0,
         videos: videoUrls.length,
         documents: docRefs.length,
+        pages: Math.max(1, ...snaps.map((s) => s.pages ?? 1)),
       });
 
       const docs = await readDocuments(docRefs, abort.signal, post);

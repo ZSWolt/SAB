@@ -1,0 +1,35 @@
+<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>משימה עם עמודים</title></head>
+<body>
+  <h1>משימה עם עמודים</h1>
+  <div id="q"></div>
+  <div class="pager"><span data-p="3">3</span><span data-p="2">2</span><span data-p="1">1</span></div>
+  <script>
+    // Like many school sites: switching page rebuilds the question HTML; answers live in JS state.
+    const pages = [
+      { text: 'שאלה 1: מה שם הגיבור?', kind: 'textarea' },
+      { text: 'שאלה 2: מי כתב את הסיפור?', kind: 'radio', options: ['ביאליק', 'עגנון'] },
+      { text: 'שאלה 3: באיזו שנה נכתב?', kind: 'text' },
+    ];
+    window.__state = {};
+    window.__cur = 1;
+    const q = document.getElementById('q');
+    function render() {
+      const cur = window.__cur, p = pages[cur - 1], v = window.__state[cur] ?? '';
+      let html = `<div class="question"><p>${p.text}</p>`;
+      if (p.kind === 'textarea') html += `<textarea>${v}</textarea>`;
+      else if (p.kind === 'text') html += `<input type="text" value="${v}">`;
+      else html += p.options.map((o) => `<label><input type="radio" name="r" value="${o}" ${v === o ? 'checked' : ''}> ${o}</label>`).join('');
+      q.innerHTML = html + '</div>';
+      q.querySelectorAll('textarea, input').forEach((el) =>
+        el.addEventListener(el.type === 'radio' ? 'change' : 'input', () => (window.__state[cur] = el.value)),
+      );
+      document.querySelectorAll('.pager span').forEach((s) => {
+        s.style.cssText = `display:inline-block;width:28px;height:28px;line-height:28px;border-radius:50%;text-align:center;cursor:pointer;color:#fff;margin:2px;background:${Number(s.dataset.p) === cur ? '#ff4500' : '#888'}`;
+      });
+    }
+    document.querySelectorAll('.pager span').forEach((s) =>
+      s.addEventListener('click', () => setTimeout(() => { window.__cur = Number(s.dataset.p); render(); }, 120)),
+    );
+    render();
+  </script>
+</body></html>

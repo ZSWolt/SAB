@@ -9,6 +9,8 @@ export interface Settings {
   extraInstructions: string;
   /** A few paragraphs the student wrote, so answers sound like them. */
   styleSample: string;
+  /** Click through page buttons (1 2 3…) at the bottom of the task and read every page. */
+  readAllPages: boolean;
   /** Dev / tests only: point the SDK at another server. */
   apiBaseUrl: string;
   /** Google AI Studio key, used only to watch videos. Empty = videos are skipped. */
@@ -37,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   answerLength: 'normal',
   extraInstructions: '',
   styleSample: '',
+  readAllPages: true,
   apiBaseUrl: '',
   geminiApiKey: '',
   geminiModel: 'gemini-3.8-flash',
