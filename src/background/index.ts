@@ -126,7 +126,7 @@ async function reloadIfUpdatedOnDisk() {
     /* no build.json: local dev build */
   }
 }
-chrome.alarms.create('sab-update-check', { periodInMinutes: 10 });
+chrome.alarms.create('sab-update-check', { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener((a) => a.name === 'sab-update-check' && reloadIfUpdatedOnDisk());
 chrome.runtime.onStartup.addListener(reloadIfUpdatedOnDisk);
 (globalThis as unknown as { __sabCheckUpdate?: () => Promise<void> }).__sabCheckUpdate = reloadIfUpdatedOnDisk; // for tests
@@ -335,7 +335,7 @@ chrome.runtime.onConnect.addListener((port) => {
         for (const [i, url] of videoUrls.entries()) {
           post({ type: 'status', text: `🎬 Gemini צופה בסרטון ${i + 1} מתוך ${videoUrls.length}… (סרטון ארוך יכול לקחת דקה-שתיים)` });
           try {
-            const v = await watchVideoCached(settings, url, questions, abort.signal);
+            const v = await watchVideoCached(settings, url, questions, abort.signal, (text) => post({ type: 'status', text: `🎬 ${text}` }));
             videoNotes.push({ url, text: v.text });
             videoStatus.push({ url, ok: true, message: v.cached ? 'מהזיכרון (בחינם)' : undefined });
             videoCost += v.costUsd;

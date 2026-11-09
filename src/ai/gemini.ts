@@ -64,15 +64,29 @@ async function friendly(res: Response): Promise<string> {
   if (/private|unlisted|not.*(public|available)|permission/i.test(detail))
     return 'Gemini לא יכול לצפות בסרטון הזה – הוא כנראה פרטי או לא רשום (Unlisted). רק סרטונים ציבוריים עובדים.';
   if (res.status === 404) return 'המודל של Gemini לא נמצא – תבחר מודל אחר בהגדרות.';
+  if (res.status === 503 || res.status === 500 || res.status === 502 || res.status === 504)
+    return 'השרתים של Gemini עמוסים כרגע (זה זמני). תנסה שוב עוד כמה דקות – או תבחר מודל אחר בהגדרות.';
   return `שגיאה מ-Gemini (${res.status})${detail ? `: ${detail}` : ''}`;
 }
 
-export async function watchVideo(
-  settings: Settings,
-  url: string,
-  questions: string,
-  signal?: AbortSignal,
-): Promise<VideoAnalysis> {
+/** Overloaded / temporary errors worth retrying (and then trying another model). */
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+const RETRY_DELAYS_MS = [2000, 6000];
+/** When the chosen model is overloaded, these run on separate capacity. */
+const FALLBACK_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+
+class RetryableError extends VideoError {}
+
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(t);
+      reject(new VideoError('בוטל.'));
+    });
+  });
+
+async function watchOnce(settings: Settings, model: string, url: string, questions: string, signal?: AbortSignal): Promise<VideoAnalysis> {
   const base = (settings.geminiBaseUrl || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
   let res: Response;
   try {
@@ -80,7 +94,7 @@ export async function watchVideo(
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': settings.geminiApiKey },
       body: JSON.stringify({
-        model: settings.geminiModel,
+        model,
         input: [
           { type: 'video', uri: url },
           { type: 'text', text: videoPrompt(questions) },
@@ -90,13 +104,47 @@ export async function watchVideo(
     });
   } catch (e) {
     if ((e as Error)?.name === 'AbortError') throw new VideoError('בוטל.');
-    throw new VideoError('אין חיבור ל-Gemini. תבדוק את האינטרנט.');
+    throw new RetryableError('אין חיבור ל-Gemini. תבדוק את האינטרנט.');
   }
-  if (!res.ok) throw new VideoError(await friendly(res));
+  if (!res.ok) {
+    const msg = await friendly(res);
+    throw RETRYABLE.has(res.status) ? new RetryableError(msg) : new VideoError(msg);
+  }
   const body = await res.json();
   const text = interactionText(body);
   if (!text) throw new VideoError('Gemini לא החזיר תיאור של הסרטון.');
-  return { text, costUsd: usageCost(settings.geminiModel, body) };
+  return { text, costUsd: usageCost(model, body) };
+}
+
+/**
+ * Watches the video with the chosen model; on "overloaded" errors retries a couple of times, then
+ * tries a fallback model (Google's free tier has a separate quota per model).
+ */
+export async function watchVideo(
+  settings: Settings,
+  url: string,
+  questions: string,
+  signal?: AbortSignal,
+  onRetry?: (text: string) => void,
+): Promise<VideoAnalysis & { model: string }> {
+  const models = [settings.geminiModel, ...FALLBACK_MODELS.filter((m) => m !== settings.geminiModel)];
+  let last: unknown;
+  for (const [mi, model] of models.entries()) {
+    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+      try {
+        return { ...(await watchOnce(settings, model, url, questions, signal)), model };
+      } catch (e) {
+        last = e;
+        if (!(e instanceof RetryableError)) throw e;
+        if (attempt < RETRY_DELAYS_MS.length) {
+          onRetry?.(`Gemini עמוס כרגע – מנסה שוב בעוד ${RETRY_DELAYS_MS[attempt] / 1000} שניות…`);
+          await sleep(RETRY_DELAYS_MS[attempt], signal);
+        }
+      }
+    }
+    if (mi < models.length - 1) onRetry?.(`${model} עמוס – עובר ל-${models[mi + 1]}…`);
+  }
+  throw last instanceof Error ? last : new VideoError('Gemini לא זמין כרגע. תנסה שוב עוד כמה דקות.');
 }
 
 /** Cached per video + model, so watching the same video twice costs nothing. */
@@ -105,12 +153,13 @@ export async function watchVideoCached(
   url: string,
   questions: string,
   signal?: AbortSignal,
+  onRetry?: (text: string) => void,
 ): Promise<VideoAnalysis & { cached: boolean }> {
   const key = `video:${settings.geminiModel}:${url}`;
   const got = await chrome.storage.local.get(key);
   const hit = got[key] as { text: string; at: number } | undefined;
   if (hit && Date.now() - hit.at < 30 * 24 * 3600 * 1000) return { text: hit.text, costUsd: 0, cached: true };
-  const out = await watchVideo(settings, url, questions, signal);
+  const out = await watchVideo(settings, url, questions, signal, onRetry);
   await chrome.storage.local.set({ [key]: { text: out.text, at: Date.now() } });
   return { ...out, cached: false };
 }

@@ -6,7 +6,7 @@
 
   It downloads the latest build from GitHub Releases into %LOCALAPPDATA%\SAB\extension (the folder you
   load in chrome://extensions) and registers a scheduled task that runs this script again at logon and
-  every 3 hours. When the files change, the extension notices and reloads itself. No admin rights.
+  every hour. When the files change, the extension notices and reloads itself. No admin rights.
 
   Pasted commands are not blocked by Smart App Control (it blocks downloaded .bat files), and the script
   only uses what PowerShell's Constrained Language Mode allows, so it also works when Smart App Control
@@ -76,7 +76,7 @@ if ($Install) {
   $arg      = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $Self + '"'
   $action   = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arg
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
-  $every3h  = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(10) -RepetitionInterval (New-TimeSpan -Hours 3) -RepetitionDuration (New-TimeSpan -Days 3650)
+  $every3h  = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(10) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Days 3650)
   try {
     $logon = New-ScheduledTaskTrigger -AtLogOn -User ($env:USERDOMAIN + '\' + $env:USERNAME)
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($logon, $every3h) -Settings $settings -Force | Out-Null
@@ -97,5 +97,5 @@ if ($Install) {
   Write-Host '  2. If you have an older SAB loaded - click Remove on it'
   Write-Host '  3. Click "Load unpacked" and choose the folder above'
   Write-Host ''
-  Write-Host 'From now on it updates by itself (at logon and every 3 hours).'
+  Write-Host 'From now on it updates by itself (at logon and every hour).'
 }

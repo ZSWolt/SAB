@@ -80,7 +80,7 @@ export class Panel {
       h(
         'div',
         { class: 'head' },
-        h('h1', {}, '⚡ SAB – עוזר משימות'),
+        h('h1', {}, '⚡ SAB – עוזר משימות', h('small', { class: 'ver' }, ` v${chrome.runtime.getManifest().version}`)),
         h('button', { class: 'icon', title: 'הגדרות', onclick: () => send({ type: 'open-options' }) }, '⚙️'),
         h('button', { class: 'icon', title: 'סגור (Alt+Shift+S)', onclick: () => this.open(false) }, '✕'),
       ),

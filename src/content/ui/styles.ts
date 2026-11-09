@@ -18,6 +18,7 @@ export const PANEL_CSS = `
 .panel.open { transform: translateX(0); }
 .head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .head h1 { font-size: 15px; margin: 0; flex: 1; }
+.head .ver { font-size: 11px; color: var(--muted); font-weight: 400; }
 .icon { background: none; border: none; color: var(--fg); cursor: pointer; font-size: 16px; padding: 4px 6px; border-radius: 6px; }
 .icon:hover { background: var(--soft); }
 .tabs { display: flex; border-bottom: 1px solid var(--line); }

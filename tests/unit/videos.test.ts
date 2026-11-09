@@ -44,3 +44,41 @@ describe('interactionText', () => {
   });
   it('reads output_text', () => expect(interactionText({ output_text: 'a' })).toBe('a'));
 });
+
+describe('watchVideo retries', () => {
+  it('retries on 503, then falls back to another model', async () => {
+    const { vi } = await import('vitest');
+    const { watchVideo } = await import('../../src/ai/gemini');
+    vi.useFakeTimers();
+    const models: string[] = [];
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const model = JSON.parse(String(init.body)).model;
+      models.push(model);
+      if (model === 'gemini-3.8-flash') return new Response(JSON.stringify({ error: { message: 'high demand' } }), { status: 503 });
+      return new Response(JSON.stringify({ steps: [{ type: 'model_output', content: [{ type: 'text', text: 'תיאור' }] }] }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const notes: string[] = [];
+    const settings = { geminiApiKey: 'k', geminiModel: 'gemini-3.8-flash', geminiBaseUrl: '' } as any;
+    const p = watchVideo(settings, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', '', undefined, (t) => notes.push(t));
+    await vi.runAllTimersAsync();
+    const out = await p;
+    expect(out.text).toBe('תיאור');
+    expect(out.model).toBe('gemini-3.5-flash-lite');
+    expect(models).toEqual(['gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite']);
+    expect(notes.some((n) => n.includes('עמוס'))).toBe(true);
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('does not retry a bad key', async () => {
+    const { vi } = await import('vitest');
+    const { watchVideo } = await import('../../src/ai/gemini');
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: { message: 'API key not valid' } }), { status: 400 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const settings = { geminiApiKey: 'bad', geminiModel: 'gemini-3.8-flash', geminiBaseUrl: '' } as any;
+    await expect(watchVideo(settings, 'https://youtu.be/dQw4w9WgXcQ', '')).rejects.toThrow('מפתח Gemini');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+});
