@@ -9,7 +9,8 @@ const NAMES = {
   alert: 'triangle-exclamation-point', refresh: 'rotate-ccw', plus: 'list-plus', notebook: 'notebook-pen',
   camera: 'camera', review: 'clipboard-check', save: 'clock', history: 'clock',
   sliders: 'settings-2', back: 'arrow-right', window: 'app-window', pause: 'pause', chevron: 'chevron-down',
-  key: 'key-round', external: 'external-link', stop: 'square',
+  key: 'key-round', external: 'external-link', stop: 'square', board: 'layout-dashboard', chat: 'message-circle',
+  send: 'arrow-up',
 };
 
 const attrs = (o) => Object.entries(o).map(([k, v]) => `${k}="${v}"`).join(' ');

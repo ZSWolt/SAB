@@ -1,7 +1,7 @@
 import type { Settings } from '../../../shared/settings';
 import type { Answer, ReviewItem } from '../../../shared/types';
 import type { Kid } from '../dom';
-import type { Sheet } from '../store';
+import type { Filter, Sheet, Tab } from '../store';
 
 /** What the views can ask the panel to do. Views only draw; the panel does the work. */
 export interface Actions {
@@ -30,6 +30,11 @@ export interface Actions {
   exportStructure(): void;
   openHistory(key: string): void;
   deleteHistory(key: string): void;
+  setTab(tab: Tab): void;
+  setFilter(filter: Filter): void;
+  sendChat(text: string): void;
+  stopChat(): void;
+  newChat(): void;
 }
 
 /** Values the student types: kept outside the store so redrawing never steals focus. */
@@ -37,9 +42,12 @@ export interface Drafts {
   note: string;
   shot: boolean;
   manualStory: string;
+  chat: string;
 }
 
 export interface Rendered {
+  /** Fixed area above the scrolling body (the dashboard's ring and counters). */
+  top?: Kid;
   body: Kid;
   foot?: Kid;
 }

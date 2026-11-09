@@ -13,6 +13,8 @@ export interface SolveCallbacks {
   onSearch(query: string): void;
   onThinking(text: string): void;
   onStatus(text: string): void;
+  /** Live text as Claude writes it (used by the chat). */
+  onText?(delta: string): void;
 }
 
 const ANSWER_TOOL: BetaToolUnion = {
@@ -95,6 +97,36 @@ const REVIEW_TOOL: BetaToolUnion = {
       },
       overall: { type: 'string' },
       sources: SOURCES_SCHEMA,
+    },
+  },
+};
+
+const UPDATE_TOOL: BetaToolUnion = {
+  name: 'update_answers',
+  description:
+    'מעדכן תשובות קיימות במשימה (או מוסיף תשובה לשאלה שחסרה) לפי בקשת התלמיד. רק כשהתלמיד ביקש לשנות, לקצר, לתרגם או להשלים תשובה. כל פריט עם ה-field_id של השדה.',
+  strict: true,
+  eager_input_streaming: true,
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['answers'],
+    properties: {
+      answers: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['question', 'part', 'answer', 'field_id', 'option'],
+          properties: {
+            question: { type: 'string' },
+            part: { type: 'string' },
+            answer: { type: 'string', description: 'התשובה החדשה, טקסט רגיל' },
+            field_id: { type: ['string', 'null'] },
+            option: { type: ['string', 'null'] },
+          },
+        },
+      },
     },
   },
 };
@@ -198,6 +230,7 @@ async function runClaude(
   tool: BetaToolUnion,
   cb: SolveCallbacks,
   signal?: AbortSignal,
+  history?: BetaMessageParam[],
 ): Promise<RunOutput> {
   const toolName = (tool as { name: string }).name;
   const client = new Anthropic({
@@ -206,7 +239,7 @@ async function runClaude(
     baseURL: settings.apiBaseUrl || undefined,
     maxRetries: 2,
   });
-  const messages: BetaMessageParam[] = [{ role: 'user', content: userContent }];
+  const messages: BetaMessageParam[] = history ? [...history] : [{ role: 'user', content: userContent }];
   const searches: string[] = [];
   const searchSources: Source[] = [];
   let totalCost = 0;
@@ -230,6 +263,7 @@ async function runClaude(
         { signal },
       );
       stream.on('thinking', (_d, snapshot) => cb.onThinking(snapshot));
+      if (cb.onText) stream.on('text', (delta) => cb.onText!(delta));
       stream.on('contentBlock', (block: BetaContentBlock) => {
         if (block.type === 'server_tool_use' && block.name === 'web_search') {
           const q = (block.input as { query?: string })?.query;
@@ -347,4 +381,25 @@ export async function testKey(settings: Settings): Promise<string> {
   } catch (e) {
     return friendlyError(e);
   }
+}
+
+export interface ChatReply {
+  text: string;
+  answers: Answer[];
+  costUsd: number;
+}
+
+/** One chat turn: Claude answers in text, and may call update_answers to change answers. */
+export async function chatWithClaude(
+  settings: Settings,
+  system: string,
+  messages: BetaMessageParam[],
+  cb: SolveCallbacks,
+  signal?: AbortSignal,
+): Promise<ChatReply> {
+  const out = await runClaude(settings, system, [], UPDATE_TOOL, cb, signal, messages);
+  const input = out.toolInput as { answers?: unknown[] } | null;
+  const answers = Array.isArray(input?.answers) ? (input!.answers.filter(isAnswer) as Answer[]) : [];
+  if (!out.text && !answers.length) throw new SolveError('לא התקבלה תשובה. תנסה שוב.');
+  return { text: out.text || (answers.length === 1 ? 'עדכנתי את התשובה.' : `עדכנתי ${answers.length} תשובות.`), answers, costUsd: out.costUsd };
 }

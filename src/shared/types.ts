@@ -161,6 +161,14 @@ export interface TaskSummary {
   updatedAt: number;
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  text: string;
+  /** Answers the assistant changed in this turn (shown as "updated" cards). */
+  answers?: Answer[];
+  costUsd?: number;
+}
+
 export type StepId = 'pages' | 'story' | 'videos' | 'search' | 'write';
 export type StepState = 'wait' | 'run' | 'done' | 'pause' | 'fail' | 'skip';
 
@@ -172,6 +180,8 @@ export type PortMessage =
   | { type: 'scan'; fields: number; story: boolean; frames: number; opener: boolean; videos: number; documents: number; pages: number }
   | { type: 'cached'; result: SolveResult; at: number }
   | { type: 'step'; id: StepId; state: StepState; label: string; meta?: string }
+  | { type: 'chat-delta'; text: string }
+  | { type: 'chat-done'; text: string; answers: Answer[]; costUsd: number; result: SolveResult | null }
   | { type: 'review'; review: ReviewResult }
   | { type: 'result'; result: SolveResult }
   | { type: 'error'; message: string };

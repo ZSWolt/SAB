@@ -1,6 +1,7 @@
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import type { Settings } from '../shared/settings';
-import type { TaggedSnapshot } from '../shared/types';
+import type { ChatMessage, SolveResult, TaggedSnapshot } from '../shared/types';
+import type { BetaMessageParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 
 const LENGTH: Record<Settings['answerLength'], string> = {
   short: 'קצר מאוד: משפט אחד או שניים לכל סעיף פתוח, ובלי הקדמות. רק מה שהשאלה מבקשת.',
@@ -212,4 +213,83 @@ export function buildContent(input: PromptInput): BetaContentBlockParam[] {
   }
   content.push({ type: 'text', text: buildPageText(input) });
   return content;
+}
+
+// ---------- chat ----------
+
+export function chatSystemPrompt(settings: Settings): string {
+  return `אתה עוזר בשיחה עם תלמיד כיתה י"א בישראל, על משימת בית ספר שפתוחה אצלו בדפדפן. בית הספר מאשר להשתמש בך.
+בהודעה הראשונה יש את ההקשר: הדף, השדות (עם id), הסיפור והתשובות שכבר נכתבו.
+
+${writingSection(settings)}
+
+## איך לענות בשיחה
+- תענה קצר וענייני, כמו חבר טוב שמבין בחומר. בלי הקדמות.
+- "תסביר", "למה", "על מה הסיפור": תסביר בפשטות, עם דוגמה מהטקסט כשזה עוזר. אל תשנה תשובות.
+- בקשה לשנות תשובה (לקצר, להאריך, לנסח אחרת, לתרגם, לתקן, להשלים שאלה חסרה): תקרא לכלי update_answers עם התשובות החדשות בלבד, וכל אחת עם ה-field_id שלה מרשימת השדות (או null אם אין שדה). בטקסט תכתוב משפט אחד על מה שינית.
+- "כל התשובות": תעדכן את כולן בקריאה אחת.
+- שאלות עובדתיות: ${SOURCES}
+- אם התלמיד מבקש משהו שלא קשור למשימה, תעזור בקצרה.${extra(settings)}`;
+}
+
+export interface ChatContext {
+  snaps: TaggedSnapshot[];
+  stories: StoryBlock[];
+  result: SolveResult | null;
+  previousPages: string;
+}
+
+function chatContextText(c: ChatContext): string {
+  const parts: string[] = [];
+  for (const st of c.stories) parts.push(`<story title="${attr(st.title)}">\n${cut(st.text, 60000)}\n</story>`);
+  for (const s of c.snaps) {
+    if (s.fullText.trim()) parts.push(`<frame id="${s.frameId}" url="${attr(s.url)}">\n${cut(s.fullText, 30000)}\n</frame>`);
+  }
+  // once solved, the answers carry the field ids to use (page-walk ids); before that, list the fields
+  if (!c.result?.answers.length) {
+    const fields = fieldList(c.snaps);
+    parts.push(`<fields>\n${fields.length ? JSON.stringify(fields, null, 1) : 'אין שדות בדף'}\n</fields>`);
+  }
+  if (c.result?.answers.length) {
+    const answers = c.result.answers.map((a) => ({
+      field_id: a.field_id,
+      question: a.questionText || [a.question, a.part].filter(Boolean).join(' '),
+      ...(a.option ? { option: a.option } : {}),
+      answer: a.answer,
+    }));
+    parts.push(`<current_answers note="התשובות שכבר נכתבו למשימה">\n${JSON.stringify(answers, null, 1)}\n</current_answers>`);
+    if (c.result.missing?.length) parts.push(`<missing note="שדות בלי תשובה">\n${c.result.missing.map((m) => `${m.field_id}: ${m.context}`).join('\n')}\n</missing>`);
+  } else {
+    parts.push('<current_answers>עוד לא נפתרה המשימה</current_answers>');
+  }
+  if (c.previousPages.trim()) parts.push(`<previous_pages>\n${c.previousPages}\n</previous_pages>`);
+  return parts.join('\n\n');
+}
+
+/**
+ * The chat as Messages API turns. The page context goes first in its own cached block, so every
+ * follow-up in the same chat costs little; then the conversation as plain text turns.
+ */
+export function buildChatContent(context: ChatContext, history: ChatMessage[]): BetaMessageParam[] {
+  const turns = history.filter((m) => m.text.trim());
+  // must start with the student and alternate
+  const clean: ChatMessage[] = [];
+  for (const m of turns) {
+    if (!clean.length && m.role !== 'user') continue;
+    if (clean.length && clean[clean.length - 1].role === m.role) clean[clean.length - 1] = { ...m, text: `${clean[clean.length - 1].text}\n${m.text}` };
+    else clean.push(m);
+  }
+  const out: BetaMessageParam[] = clean.map((m, i) => {
+    if (i === 0) {
+      return {
+        role: 'user',
+        content: [
+          { type: 'text', text: `<context>\n${chatContextText(context)}\n</context>`, cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: m.text },
+        ],
+      };
+    }
+    return { role: m.role, content: m.text };
+  });
+  return out;
 }

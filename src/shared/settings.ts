@@ -42,7 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   extraInstructions: '',
   styleSample: '',
   readAllPages: true,
-  theme: 'auto',
+  theme: 'school',
   apiBaseUrl: '',
   geminiApiKey: '',
   geminiModel: 'gemini-3.8-flash',

@@ -30,7 +30,32 @@ function toolEvents(body, name, input) {
 
 let skipIframeField = true;
 
+function mockChat(body) {
+  const ctx = body.messages[0].content.map((c) => c.text ?? '').join('\n');
+  const cur = ctx.match(/<current_answers[^>]*>\n([\s\S]*?)\n<\/current_answers>/);
+  const first = cur ? JSON.parse(cur[1])[0] : null;
+  const say = first ? 'קיצרתי את תשובה 1.' : 'הסיפור מספר על באדי.';
+  const events = [
+    { type: 'message_start', message: { id: 'msg_c', type: 'message', role: 'assistant', model: body.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 500, output_tokens: 1 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: say.slice(0, 6) } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: say.slice(6) } },
+    { type: 'content_block_stop', index: 0 },
+  ];
+  if (first) {
+    const input = JSON.stringify({ answers: [{ question: 'שאלה 1', part: '', answer: 'תשובה קצרה מהשיחה', field_id: first.field_id, option: null }] });
+    events.push(
+      { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'toolu_c', name: 'update_answers', input: {} } },
+      { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: input } },
+      { type: 'content_block_stop', index: 1 },
+    );
+  }
+  events.push({ type: 'message_delta', delta: { stop_reason: first ? 'tool_use' : 'end_turn', stop_sequence: null }, usage: { output_tokens: 60 } }, { type: 'message_stop' });
+  return events;
+}
+
 function mockAnswer(body) {
+  if (body.tools.some((t) => t.name === 'update_answers')) return mockChat(body);
   const text = body.messages[0].content.map((c) => c.text ?? '').join('\n');
   const fields = JSON.parse(text.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
   if (body.tools.some((t) => t.name === 'submit_review')) {
@@ -133,11 +158,20 @@ try {
   if (process.env.SHOT || process.env.SHOT_DIR) await page.setViewportSize({ width: 1100, height: 760 });
   await page.goto(`http://localhost:${port}/task.html?attempt=7`);
   await page.waitForSelector('#sab-helper-host', { state: 'attached' });
-  console.log('✓ button injected');
+  await page.waitForSelector('#sab-helper-host >> .fab');
+  const fabBox = await page.evaluate(() => {
+    const r = document.querySelector('#sab-helper-host').shadowRoot.querySelector('.fab').getBoundingClientRect();
+    return { left: r.left, bottom: innerHeight - r.bottom, w: r.width, h: r.height };
+  });
+  assert.ok(fabBox.left >= 16 && fabBox.left <= 32 && fabBox.bottom >= 16 && fabBox.bottom <= 32 && fabBox.w === 56 && fabBox.h === 56, JSON.stringify(fabBox));
+  console.log('✓ button injected: round 56px, bottom-left corner');
 
   await page.keyboard.press('Alt+Shift+S');
   await page.waitForSelector('#sab-helper-host >> .panel.open');
-  console.log('✓ Alt+Shift+S opens the panel');
+  await page.waitForTimeout(400);
+  const panelLeft = await page.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelector('.panel').getBoundingClientRect().left);
+  assert.ok(Math.abs(panelLeft) < 2, `panel left ${panelLeft}`);
+  console.log('✓ Alt+Shift+S opens the panel on the left side');
   await page.click('#sab-helper-host >> .head .icon-btn[title="סגור"]');
   await page.waitForSelector('#sab-helper-host >> .panel:not(.open)', { state: 'attached' });
   console.log('✓ ✕ closes the panel');
@@ -150,29 +184,32 @@ try {
   await page.waitForSelector('#sab-helper-host >> .panel.open');
   console.log('✓ hidden button comes back with Alt+Shift+S');
 
-  // quick look runs by itself when the panel opens
-  await page.waitForSelector('#sab-helper-host >> .scan >> text=/3 שאלות/');
-  await page.click('#sab-helper-host >> .collapse-h');
-  await page.waitForSelector('#sab-helper-host >> text=/סיפור: /');
-  await page.waitForSelector('#sab-helper-host >> text=/סרטון יוטיוב אחד/');
+  // quick look runs by itself when the panel opens: counters, tags and the question list
+  await page.waitForFunction(() => document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.questions .item').length === 3);
+  await page.waitForSelector('#sab-helper-host >> .tag >> text=/סיפור: /');
+  await page.waitForSelector('#sab-helper-host >> .tag >> text=סרטון אחד');
+  await page.waitForSelector('#sab-helper-host >> .questions >> text=/תאר את דמות הכלה/');
   console.log('✓ scan: 3 fields (one in a cross-origin iframe) + hidden story');
 
   // solve
   await page.click('#sab-helper-host >> .btn.primary.big');
-  await page.waitForSelector('#sab-helper-host >> text=/מוכן · 2 תשובות/', { timeout: 20000 });
+  await page.waitForSelector('#sab-helper-host >> .rl >> text=2/3', { timeout: 20000 });
   const req = requests.at(-1);
   const doc = req.body.messages[0].content.find((c) => c.type === 'document');
   assert.ok(doc, 'PDF sent as a document block');
   assert.equal(Buffer.from(doc.source.data, 'base64').toString().slice(0, 5), '%PDF-');
   const storyBlock = req.body.messages[0].content.find((c) => c.type === 'text' && c.text.includes('<story'));
   assert.deepEqual(storyBlock.cache_control, { type: 'ephemeral' }, 'story block is cached');
-  await page.waitForSelector('#sab-helper-host >> text=/השתמשתי ב: מסמך/');
   console.log('✓ PDF linked in the task is downloaded and sent; story block marked for caching');
 
-  await page.waitForSelector('#sab-helper-host >> text=/שאלה אחת לא קיבלה תשובה/');
+  await page.waitForSelector('#sab-helper-host >> .chip.bad >> text=חסר');
+  await page.click('#sab-helper-host >> .seg >> text=/חסר/');
+  assert.equal(await page.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.answers .item').length), 1, 'filter shows only the missing one');
+  await page.click('#sab-helper-host >> .seg >> text=/הכול/');
+  console.log('✓ dashboard counters and filter (missing shows only the missing question)');
   await shot(page, '2-missing');
-  await page.click('#sab-helper-host >> text=השלם את החסר');
-  await page.waitForSelector('#sab-helper-host >> text=/מוכן · 3 תשובות/', { timeout: 20000 });
+  await page.click('#sab-helper-host >> text=השלם חסר');
+  await page.waitForSelector('#sab-helper-host >> .rl >> text=3/3', { timeout: 20000 });
   const onlyReq = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
   assert.ok(onlyReq.includes('תענה **רק** עליהם'));
   assert.equal(JSON.parse(onlyReq.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]).length, 1);
@@ -185,14 +222,12 @@ try {
   assert.equal(req.body.thinking.type, 'adaptive');
   assert.equal(req.body.fallbacks, 'default');
   assert.ok(String(req.headers['anthropic-beta']).includes('server-side-fallback-2026-07-01'));
-  await page.waitForSelector('#sab-helper-host >> text=/חיפוש אחד/');
   const g = geminiRequests.at(-1);
   assert.ok(g, 'gemini called');
   assert.equal(g.headers['x-goog-api-key'], 'AIza-test');
   assert.deepEqual(g.body.input[0], { type: 'video', uri: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' });
   assert.ok(userText.includes('<video url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"'), 'video description sent to Claude');
   assert.ok(userText.includes('כתבתי את הסיפור בקיץ'));
-  await page.waitForSelector('#sab-helper-host >> text=/סרטון אחד/');
   console.log('✓ video: Gemini watched the YouTube video and Claude got the description');
   console.log('✓ solve: story + web search + answers shown');
   await shot(page, '3-answers');
@@ -210,6 +245,22 @@ try {
   await page.waitForFunction(() => document.querySelector('#q1').value === '');
   console.log('✓ undo fill');
 
+  // chat tab: ask to shorten answer 1 → text streams in, an "updated" card, fill it, and the board shows it
+  await page.click('#sab-helper-host >> .tabbar >> text=שיחה');
+  await page.fill('#sab-helper-host >> .cbox textarea', 'תקצר את תשובה 1');
+  await page.press('#sab-helper-host >> .cbox textarea', 'Enter');
+  await page.waitForSelector('#sab-helper-host >> .msg-bot >> text=/קיצרתי את תשובה 1/', { timeout: 20000 });
+  const chatReq = requests.at(-1).body;
+  assert.ok(chatReq.tools.some((t) => t.name === 'update_answers'));
+  assert.deepEqual(chatReq.messages[0].content[0].cache_control, { type: 'ephemeral' }, 'chat context is cached');
+  await page.waitForSelector('#sab-helper-host >> .upd >> text=תשובה קצרה מהשיחה');
+  await shot(page, '6-chat');
+  await page.click('#sab-helper-host >> .upd >> text=מלא בשדה');
+  await page.waitForFunction(() => document.querySelector('#q1').value === 'תשובה קצרה מהשיחה');
+  await page.click('#sab-helper-host >> .tabbar >> text=לוח');
+  await page.waitForSelector('#sab-helper-host >> .answers >> text=תשובה קצרה מהשיחה');
+  console.log('✓ chat tab: streamed reply, updated answer card, fill, and the board shows the new answer');
+
   // same page again → saved answers, no new request
   const before = requests.length;
   await page.click('#sab-helper-host >> text=חזרה למסך הפתיחה');
@@ -224,7 +275,7 @@ try {
   await page2.goto(`http://localhost:${port}/page2.html?attempt=7`);
   await page2.waitForSelector('#sab-helper-host', { state: 'attached' });
   await page2.keyboard.press('Alt+Shift+A');
-  await page2.waitForSelector('#sab-helper-host >> text=/מוכן · 1 תשובות/', { timeout: 20000 });
+  await page2.waitForSelector('#sab-helper-host >> .rl >> text=1/1', { timeout: 20000 });
   const p2 = requests.at(-1).body.messages[0].content;
   const p2text = p2.map((c) => c.text ?? '').join('\n');
   assert.ok(p2text.includes('הכלה יצאה לצוד פרפרים'), 'story from page 1');
@@ -244,7 +295,7 @@ try {
   await page2.fill('#q5', 'הפרפרים מסמלים חופש');
   await page2.click('#sab-helper-host >> button[title="חזרה"]');
   await page2.click('#sab-helper-host >> text=חזרה למסך הפתיחה');
-  await page2.click('#sab-helper-host >> .btn.big.review');
+  await page2.click('#sab-helper-host >> .btn.review');
   await page2.waitForSelector('#sab-helper-host >> text=/ציון ממוצע 55/', { timeout: 20000 });
   await page2.waitForSelector('#sab-helper-host >> .reviews >> text=/מה הקשר בין הפרפרים לכלה/');
   await page2.waitForSelector('#sab-helper-host >> text=/כתבת: הפרפרים מסמלים חופש/');
@@ -262,11 +313,11 @@ try {
   await page.evaluate(() => document.querySelector('.pager span[data-p="2"]').click()); // the student is on page 2
   await page.waitForFunction(() => window.__cur === 2);
   await page.keyboard.press('Alt+Shift+A');
-  await page.waitForSelector('#sab-helper-host >> .step >> text=/עמוד \\d מתוך 3/', { timeout: 10000 });
+  await page.waitForSelector('#sab-helper-host >> .card >> text=/עמוד \\d מתוך 3/', { timeout: 10000 });
   await page.waitForTimeout(400);
   await shot(page, '2-working');
   console.log('✓ working screen shows live page progress ("עמוד N מתוך 3")');
-  await page.waitForSelector('#sab-helper-host >> text=/מוכן · 3 תשובות/', { timeout: 30000 });
+  await page.waitForSelector('#sab-helper-host >> .rl >> text=3/3', { timeout: 30000 });
   const pagedText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
   for (const t of ['מה שם הגיבור', 'מי כתב את הסיפור', 'באיזו שנה נכתב', 'עמוד 3 מתוך 3']) assert.ok(pagedText.includes(t), t);
   const pagedFields = JSON.parse(pagedText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
@@ -289,7 +340,7 @@ try {
   await popup.waitForLoadState();
   await popup.waitForSelector('#sab-helper-host', { state: 'attached' });
   await popup.keyboard.press('Alt+Shift+A');
-  await popup.waitForSelector('#sab-helper-host >> text=/מוכן · 1 תשובות/', { timeout: 20000 });
+  await popup.waitForSelector('#sab-helper-host >> .rl >> text=1/1', { timeout: 20000 });
   const popupText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
   assert.ok(popupText.includes('<opener_window'), 'opener window context sent');
   assert.ok(popupText.includes('הכלה יצאה לצוד פרפרים'), 'story from opener sent');
@@ -316,7 +367,12 @@ try {
       await page.click('#sab-helper-host >> text=חזרה למסך הפתיחה').catch(() => {});
       await shot(page, `t-${theme}-1-idle`);
       await page.click('#sab-helper-host >> text=/הצג את התשובות האחרונות/');
-      await page.click('#sab-helper-host >> .qrow >> nth=1');
+      await page.click('#sab-helper-host >> .answers button.crow >> nth=1');
+      await shot(page, `t-${theme}-2-results`);
+      await page.click('#sab-helper-host >> .tabbar >> text=שיחה');
+      await page.waitForTimeout(150);
+      await shot(page, `t-${theme}-4-chat`);
+      await page.click('#sab-helper-host >> .tabbar >> text=לוח');
       await shot(page, `t-${theme}-2-results`);
       for (const sheet of ['סיפור', 'היסטוריה', 'הגדרות']) {
         await page.click(`#sab-helper-host >> button[title="${sheet}"]`);

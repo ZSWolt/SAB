@@ -1,4 +1,4 @@
-import type { DocumentRef, ReviewResult, SolveResult, StepId, StepState, StoryInfo, TaskSummary } from '../../shared/types';
+import type { ChatMessage, DocumentRef, FieldKind, ReviewResult, SolveResult, StepId, StepState, StoryInfo, TaskSummary } from '../../shared/types';
 import type { Settings } from '../../shared/settings';
 
 /** One line in the "working" list. */
@@ -19,13 +19,23 @@ export interface ScanSummary {
   opener: boolean;
   open: number;
   choice: number;
+  questions: { text: string; page?: number; kind: FieldKind }[];
 }
 
 export type ThemeName = 'notebook' | 'focus' | 'school';
 export type View = 'idle' | 'working' | 'results' | 'review';
 export type Sheet = null | 'story' | 'history' | 'settings';
+export type Tab = 'board' | 'chat';
+export type Filter = 'all' | 'missing' | 'unfilled' | 'filled';
 
 export interface UIState {
+  tab: Tab;
+  filter: Filter;
+  chat: ChatMessage[];
+  chatBusy: boolean;
+  /** The assistant's reply as it streams in. */
+  chatLive: string;
+  chatStatus: string;
   view: View;
   sheet: Sheet;
   mode: 'solve' | 'review';
@@ -56,6 +66,12 @@ export const STEP_ORDER: StepId[] = ['pages', 'story', 'videos', 'search', 'writ
 
 export function initialState(): UIState {
   return {
+    tab: 'board',
+    filter: 'all',
+    chat: [],
+    chatBusy: false,
+    chatLive: '',
+    chatStatus: '',
     view: 'idle',
     sheet: null,
     mode: 'solve',

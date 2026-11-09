@@ -1,17 +1,16 @@
 import { DEFAULT_SETTINGS, getSettings, saveSettings, type Settings } from '../../shared/settings';
-import type { Answer, FillOutcome, PortMessage, ReviewItem, SolveRequest, SolveResult, TaggedSnapshot, TaskSummary } from '../../shared/types';
+import type { Answer, ChatMessage, FillOutcome, PortMessage, ReviewItem, SolveRequest, SolveResult, TaggedSnapshot, TaskSummary } from '../../shared/types';
+import { questionLine } from '../../background/coverage';
 import { PANEL_HOST_ID } from '../text';
 import { h, iconBtn, swap } from './dom';
 import { loadFonts } from './fonts';
 import { icon } from './icons';
-import { createStore, resolveTheme, upsertStep, type ScanSummary, type Sheet, type UIState } from './store';
+import { createStore, resolveTheme, upsertStep, type Filter, type ScanSummary, type Sheet, type Tab, type UIState } from './store';
 import { PANEL_CSS } from './styles';
-import { idleView } from './views/idle';
-import { resultsView } from './views/results';
-import { reviewView } from './views/review';
+import { boardView } from './views/board';
+import { chatView } from './views/chat';
 import { historySheet, settingsSheet, SHEET_TITLES, storySheet } from './views/sheets';
 import type { Actions, Drafts, Rendered } from './views/types';
-import { workingView } from './views/working';
 
 /** Messages to the background. If the extension was updated, this old copy can't talk to it anymore. */
 const send = <T = unknown>(msg: object): Promise<T> => {
@@ -33,6 +32,7 @@ export function summarizeScan(snaps: TaggedSnapshot[], opener: TaggedSnapshot[])
     docs: [...new Map(all.flatMap((s) => s.documents ?? []).map((d) => [d.url, d])).values()],
     videos: new Set(all.flatMap((s) => (s.videos ?? []).map((v) => v.url))).size,
     opener: opener.length > 0,
+    questions: fields.map((f) => ({ text: questionLine(f.context), page: f.page, kind: f.kind })),
   };
 }
 
@@ -43,10 +43,13 @@ export class Panel {
   private panel!: HTMLElement;
   private fabWrap!: HTMLElement;
   private head!: HTMLElement;
+  private tabbar!: HTMLElement;
+  private top!: HTMLElement;
   private body!: HTMLElement;
   private foot!: HTMLElement;
+  private chatPort: chrome.runtime.Port | null = null;
   private store = createStore();
-  private drafts: Drafts = { note: '', shot: false, manualStory: '' };
+  private drafts: Drafts = { note: '', shot: false, manualStory: '', chat: '' };
   private port: chrome.runtime.Port | null = null;
   private prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)');
   private scannedOnce = false;
@@ -72,6 +75,9 @@ export class Panel {
     send<{ result: SolveResult | null }>({ type: 'get-last' })
       .then((r) => r?.result && this.store.set({ result: r.result }))
       .catch(() => {});
+    send<ChatMessage[] | null>({ type: 'chat-load' })
+      .then((chat) => chat?.length && this.store.set({ chat }))
+      .catch(() => {});
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.isOpen() && this.store.get().sheet) {
         this.store.set({ sheet: null });
@@ -84,16 +90,20 @@ export class Panel {
   private buildShell() {
     this.shadow.append(h('style', {}, PANEL_CSS));
     this.root = h('div', { class: 'root', 'data-theme': 'notebook' });
+    // round button in the bottom-left corner, like an accessibility button
     this.fabWrap = h(
       'div',
-      { class: 'fab-wrap' },
-      h('button', { type: 'button', class: 'fab', title: 'SAB עוזר משימות · Alt Shift S', 'aria-label': 'פתח את SAB', onclick: () => this.toggle() }, icon('notebook', 18)),
+      { class: 'launcher' },
+      h('button', { type: 'button', class: 'fab', 'aria-label': 'פתח את SAB', onclick: () => this.toggle() }, icon('notebook', 24)),
+      h('span', { class: 'fab-tip', role: 'tooltip' }, 'SAB · ', h('span', { class: 'kb' }, 'Alt Shift S')),
       h('button', { type: 'button', class: 'fab-x', title: 'הסתר עד Alt Shift S', 'aria-label': 'הסתר', onclick: () => this.setHidden(true, true) }, icon('close', 12)),
     );
     this.head = h('div', { class: 'head' });
+    this.tabbar = h('div', { class: 'tabbar', role: 'tablist' });
+    this.top = h('div', { class: 'top' });
     this.body = h('div', { class: 'body' });
     this.foot = h('div', { class: 'foot' });
-    this.panel = h('div', { class: 'panel', role: 'dialog', 'aria-label': 'SAB עוזר משימות' }, this.head, this.body, this.foot);
+    this.panel = h('div', { class: 'panel', role: 'dialog', 'aria-label': 'SAB עוזר משימות' }, this.head, this.tabbar, this.top, this.body, this.foot);
     this.root.append(this.fabWrap, this.panel);
     this.shadow.append(this.root);
   }
@@ -106,7 +116,7 @@ export class Panel {
       this.head.className = 'head sheet';
     } else {
       swap(this.head, [
-        h('div', { class: 'brand' }, h('b', {}, 'SAB'), h('span', {}, 'עוזר משימות'), h('small', {}, `v${chrome.runtime.getManifest().version}`)),
+        h('div', { class: 'brand' }, h('b', {}, 'SAB'), h('span', { title: document.title }, document.title.slice(0, 40) || 'עוזר משימות'), h('small', {}, `v${chrome.runtime.getManifest().version}`)),
         iconBtn('book', 'סיפור', () => a.openSheet('story')),
         iconBtn('history', 'היסטוריה', () => a.openSheet('history')),
         iconBtn('sliders', 'הגדרות', () => a.openSheet('settings')),
@@ -114,9 +124,18 @@ export class Panel {
       ]);
       this.head.className = 'head';
     }
+    const tab = (id: Tab, label: string, name: 'board' | 'chat') =>
+      h('button', { type: 'button', role: 'tab', 'aria-selected': String(s.tab === id), onclick: () => a.setTab(id) }, icon(name), label);
+    swap(this.tabbar, s.sheet ? null : [tab('board', 'לוח', 'board'), tab('chat', 'שיחה', 'chat')]);
+    this.tabbar.style.display = s.sheet ? 'none' : '';
     const view = this.viewFor(s);
+    swap(this.top, view.top ?? null);
     swap(this.body, view.body);
     swap(this.foot, view.foot ?? null);
+    this.foot.style.padding = !s.sheet && s.tab === 'chat' ? '0' : '';
+    this.foot.style.display = !s.sheet && s.tab === 'chat' ? 'block' : '';
+    if (!s.sheet && s.tab === 'chat') this.body.scrollTop = this.body.scrollHeight;
+    this.fabWrap.classList.toggle('beside', this.isOpen());
   }
 
   private viewFor(s: UIState): Rendered {
@@ -124,10 +143,8 @@ export class Panel {
     if (s.sheet === 'story') return storySheet(s, a, this.drafts);
     if (s.sheet === 'history') return historySheet(s, a);
     if (s.sheet === 'settings') return settingsSheet(s, a);
-    if (s.view === 'working') return workingView(s, a);
-    if (s.view === 'results' && s.result) return resultsView(s, a);
-    if (s.view === 'review' && s.review) return reviewView(s, a);
-    return idleView(s, a, this.drafts);
+    if (s.tab === 'chat') return chatView(s, a, this.drafts);
+    return boardView(s, a, this.drafts);
   }
 
   // ---------- settings & theme ----------
@@ -149,7 +166,10 @@ export class Panel {
   // ---------- visibility ----------
   open(on: boolean) {
     this.panel.classList.toggle('open', on);
-    this.fabWrap.style.display = on ? 'none' : '';
+    this.fabWrap.classList.toggle('beside', on);
+    const fab = this.fabWrap.querySelector('.fab');
+    fab?.replaceChildren(icon(on ? 'close' : 'notebook', on ? 20 : 24));
+    fab?.setAttribute('aria-label', on ? 'סגור את SAB' : 'פתח את SAB');
     if (on && !this.scannedOnce && !this.store.get().busy) {
       this.scannedOnce = true;
       this.scan();
@@ -211,6 +231,8 @@ export class Panel {
     }
     this.open(true);
     this.store.set({
+      tab: 'board',
+      filter: 'all',
       busy: true,
       mode,
       view: 'working',
@@ -278,6 +300,37 @@ export class Panel {
     const prev = this.store.get().filled;
     const ids = new Set(r.answers.map((a) => a.field_id).filter(Boolean));
     return Object.fromEntries(Object.entries(prev).filter(([id]) => ids.has(id)));
+  }
+
+  // ---------- chat ----------
+  private sendChat(text: string) {
+    const s = this.store.get();
+    if (s.chatBusy) return;
+    if (!s.hasKey) return this.toast('קודם צריך לחבר את Claude');
+    if (!chrome.runtime?.id) return this.toast('התוסף התעדכן. תרענן את הדף (F5) ואז תנסה שוב');
+    const chat: ChatMessage[] = [...s.chat, { role: 'user', text }];
+    this.store.set({ chat, chatBusy: true, chatLive: '', chatStatus: '', error: null, tab: 'chat' });
+    const port = chrome.runtime.connect({ name: 'chat' });
+    this.chatPort = port;
+    port.onMessage.addListener((m: PortMessage) => {
+      if (m.type === 'chat-delta') this.store.set((st) => ({ chatLive: st.chatLive + m.text, chatStatus: '' }));
+      else if (m.type === 'status') this.store.set({ chatStatus: m.text });
+      else if (m.type === 'chat-done') {
+        const next: ChatMessage[] = [...this.store.get().chat, { role: 'assistant', text: m.text, answers: m.answers, costUsd: m.costUsd }];
+        this.store.set({ chat: next, chatBusy: false, chatLive: '', chatStatus: '', ...(m.result ? { result: m.result } : {}) });
+        send({ type: 'chat-save', chat: next }).catch(() => {});
+        if (m.answers.length) this.toast(m.answers.length === 1 ? 'התשובה עודכנה גם בלוח' : `${m.answers.length} תשובות עודכנו גם בלוח`);
+      } else if (m.type === 'error') {
+        this.store.set({ chatBusy: false, chatLive: '', error: m.message });
+      }
+    });
+    port.onDisconnect.addListener(() => {
+      if (this.chatPort !== port) return;
+      this.chatPort = null;
+      if (this.store.get().chatBusy) this.store.set({ chatBusy: false, chatLive: '' });
+    });
+    port.postMessage({ messages: chat });
+    send({ type: 'chat-save', chat }).catch(() => {});
   }
 
   fillLast() {
@@ -382,6 +435,21 @@ export class Panel {
         if (!r) return this.toast('לא נמצאו תשובות שמורות');
         const elsewhere = r.url.split('#')[0] !== location.href.split('#')[0];
         set({ result: r.result, view: 'results', sheet: null, savedAt: r.at, savedElsewhere: elsewhere, openRow: -1, filled: {} });
+      },
+      setTab: (tab: Tab) => set({ tab, error: null }),
+      setFilter: (filter: Filter) => set({ filter, openRow: -1 }),
+      sendChat: (text: string) => this.sendChat(text),
+      stopChat: () => {
+        const port = this.chatPort;
+        this.chatPort = null;
+        port?.disconnect();
+        const live = this.store.get().chatLive;
+        const chat: ChatMessage[] = live ? [...this.store.get().chat, { role: 'assistant', text: `${live}\n(נעצר)` }] : this.store.get().chat;
+        set({ chatBusy: false, chatLive: '', chat });
+      },
+      newChat: () => {
+        set({ chat: [], chatLive: '', error: null });
+        send({ type: 'chat-save', chat: [] }).catch(() => {});
       },
       deleteHistory: async (key) => {
         const hist = await send<{ tasks: TaskSummary[]; monthCost: number }>({ type: 'history-delete', key }).catch(() => null);

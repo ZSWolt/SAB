@@ -1,12 +1,12 @@
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { buildContent, collectStories, reviewSystemPrompt, systemPrompt, type PdfBlock, type StoryBlock } from '../ai/prompt';
-import { reviewWithClaude, solveWithClaude, SolveError, testKey } from '../ai/claude';
+import { buildChatContent, buildContent, chatSystemPrompt, collectStories, reviewSystemPrompt, systemPrompt, type PdfBlock, type StoryBlock } from '../ai/prompt';
+import { chatWithClaude, reviewWithClaude, solveWithClaude, SolveError, testKey } from '../ai/claude';
 import { checkCoverage, enrich, mergeResults } from './coverage';
 import { fetchDocument } from './documents';
 import { addCost, deleteTask, fieldsHash, findPage, getTask, listTasks, previousPagesSummary, savePage, taskKey } from './tasks';
 import { testGeminiKey, watchVideoCached } from '../ai/gemini';
-import { getSettings } from '../shared/settings';
-import type { DocumentRef, FillItem, FillOutcome, FrameSnapshot, PortMessage, SolveRequest, SolveResult, StepId, StepState, TaggedSnapshot } from '../shared/types';
+import { getSettings, saveSettings } from '../shared/settings';
+import type { ChatMessage, DocumentRef, FillItem, FillOutcome, FrameSnapshot, PortMessage, SolveRequest, SolveResult, StepId, StepState, TaggedSnapshot } from '../shared/types';
 
 // ---------- frames ----------
 
@@ -40,7 +40,7 @@ async function collect(tabId: number, allPages = true): Promise<TaggedSnapshot[]
 // ---------- per-tab session state ----------
 
 type TabMap<T> = Record<number, T>;
-async function getMap<T>(key: 'openers' | 'results'): Promise<TabMap<T>> {
+async function getMap<T>(key: 'openers' | 'results' | 'chats'): Promise<TabMap<T>> {
   const got = await chrome.storage.session.get(key);
   return (got[key] as TabMap<T> | undefined) ?? {};
 }
@@ -59,9 +59,11 @@ chrome.tabs.onCreated.addListener(async (tab) => {
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const openers = await getMap<number>('openers');
   const results = await getMap<unknown>('results');
+  const chats = await getMap<unknown>('chats');
+  delete chats[tabId];
   delete openers[tabId];
   delete results[tabId];
-  await chrome.storage.session.set({ openers, results });
+  await chrome.storage.session.set({ openers, results, chats });
 });
 
 async function openerOf(tabId: number): Promise<number | null> {
@@ -105,6 +107,13 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   if (reason === 'install') chrome.runtime.openOptionsPage();
   // After an update, put the new content script into tabs that are already open.
   if (reason === 'update') {
+    // v5: the dashboard's school look becomes the default; move "auto" over once
+    const st = await getSettings();
+    const { themeV5 } = await chrome.storage.local.get('themeV5');
+    if (!themeV5) {
+      if (st.theme === 'auto') await saveSettings({ theme: 'school' });
+      await chrome.storage.local.set({ themeV5: true });
+    }
     const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
     for (const t of tabs) {
       if (t.id !== undefined) chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['content.js'] }).catch(() => {});
@@ -206,6 +215,16 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       case 'get-last': {
         const results = await getMap<unknown>('results');
         return { result: results[tabId] ?? null };
+      }
+      case 'chat-load': {
+        const chats = await getMap<ChatMessage[]>('chats');
+        return chats[tabId] ?? [];
+      }
+      case 'chat-save': {
+        const chats = await getMap<ChatMessage[]>('chats');
+        chats[tabId] = (msg.chat as ChatMessage[]).slice(-40);
+        await chrome.storage.session.set({ chats });
+        return true;
       }
       case 'history-list':
         return listTasks();
@@ -445,6 +464,86 @@ chrome.runtime.onConnect.addListener((port) => {
     } finally {
       if (tabId !== undefined && livePorts.get(tabId) === post) livePorts.delete(tabId);
       activeSolves = Math.max(0, activeSolves - 1);
+      clearInterval(keepAlive);
+      if (alive) port.disconnect();
+    }
+  });
+});
+
+// ---------- chat: talk with the assistant about the open task ----------
+
+/** After a chat edit, keep the question text and page the old answer had. */
+function carryOver(prev: SolveResult | null, answers: SolveResult['answers']) {
+  const old = new Map((prev?.answers ?? []).filter((a) => a.field_id).map((a) => [a.field_id, a]));
+  return answers.map((a) => {
+    const o = a.field_id ? old.get(a.field_id) : undefined;
+    return o ? { ...a, questionText: a.questionText ?? o.questionText, page: a.page ?? o.page } : a;
+  });
+}
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'chat') return;
+  const tabId = port.sender?.tab?.id;
+  const tabUrl = port.sender?.tab?.url;
+  const abort = new AbortController();
+  let alive = true;
+  port.onDisconnect.addListener(() => {
+    alive = false;
+    abort.abort();
+  });
+  const post = (m: PortMessage) => alive && port.postMessage(m);
+  const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000);
+
+  port.onMessage.addListener(async (req: { messages: ChatMessage[] }) => {
+    if (tabId === undefined) return;
+    try {
+      const settings = await getSettings();
+      if (!settings.apiKey) throw new SolveError('צריך לחבר את Claude: מדביקים מפתח API במסך הפתיחה או בהגדרות');
+      // a quick look only: never click through pages while chatting
+      const snaps = await collect(tabId, false);
+      const top = snaps.find((s) => s.isTop) ?? snaps[0];
+      const pageUrl = top?.url ?? tabUrl ?? '';
+      const key = taskKey(pageUrl);
+      const task = await getTask(key);
+      const results = await getMap<SolveResult>('results');
+      let result: SolveResult | null = results[tabId] ?? null;
+      let stories = collectStories(snaps, [], '');
+      if (!stories.length && task?.stories.length) stories = task.stories;
+      const hash = fieldsHash(snaps);
+
+      const reply = await chatWithClaude(
+        settings,
+        chatSystemPrompt(settings),
+        buildChatContent({ snaps, stories, result, previousPages: previousPagesSummary(task, hash) }, req.messages),
+        {
+          onSearch: (q) => post({ type: 'status', text: `מחפש: ${q}` }),
+          onThinking: () => {},
+          onStatus: (text) => post({ type: 'status', text }),
+          onText: (text) => post({ type: 'chat-delta', text }),
+        },
+        abort.signal,
+      );
+
+      const answers = carryOver(result, enrich(reply.answers, snaps));
+      if (answers.length) {
+        const next: SolveResult = { answers, sources: [], notes: '', model: '', searches: [], videos: [], costUsd: reply.costUsd };
+        result = result ? mergeResults(result, next) : next;
+        Object.assign(result, checkCoverage(snaps, result));
+        results[tabId] = result;
+        await chrome.storage.session.set({ results });
+        await savePage(
+          key,
+          { title: top?.title ?? '', url: pageUrl, stories, documents: task?.documents ?? [] },
+          { url: pageUrl, fieldsHash: task?.pages.at(-1)?.fieldsHash ?? hash, result, at: Date.now() },
+          reply.costUsd,
+        );
+      } else {
+        await addCost(key, top?.title ?? '', pageUrl, reply.costUsd);
+      }
+      post({ type: 'chat-done', text: reply.text, answers, costUsd: reply.costUsd, result: answers.length ? result : null });
+    } catch (e) {
+      post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
+    } finally {
       clearInterval(keepAlive);
       if (alive) port.disconnect();
     }
