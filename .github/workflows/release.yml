@@ -1,0 +1,56 @@
+name: Build & publish extension
+
+# Every push builds the extension and publishes it as the "latest" release.
+# The Windows updater (scripts/windows/sab-update.ps1) downloads it from there.
+on:
+  push:
+    branches: [main, claude/happy-ptolemy-y25ctt]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          SAB_VERSION: 0.2.${{ github.run_number }}
+
+      - name: Package
+        run: |
+          rm -f dist/*.map
+          (cd dist && zip -qr ../sab-extension.zip .)
+          cp dist/build.json build.json
+          cp scripts/windows/sab-update.ps1 sab-update.ps1
+          cp scripts/windows/install.bat install.bat
+
+      - name: Publish "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: 0.2.${{ github.run_number }}
+        run: |
+          git tag -f latest
+          git push -f origin latest
+          if ! gh release view latest >/dev/null 2>&1; then
+            gh release create latest --title "SAB – גרסה אחרונה" --notes "נבנה אוטומטית." --latest
+          fi
+          gh release upload latest sab-extension.zip build.json sab-update.ps1 install.bat --clobber
+          gh release edit latest --notes "גרסה $VERSION · $(git log -1 --pretty=%s)"

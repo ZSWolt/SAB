@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArPbsE+k0aXr6ab//ZTsfhAZ3lFEkI7C05HPt8oOTvp7A3/TCellVTp6DBR2MtJJV7DcbIoqUoM8NHy27e2u3J3EvujnBUQF/kuQsEMEeH8WIacvR9LZx91dtmF1pwUq3bliyfFZ9ddo6gvRG/09rvBGNv8BZ2Z4UOoC/lYxRl1PbZ7EwSnqYICcL+fqBK9FOSfJG2ITb7SAMF9bqVOGlSNHoqtHDDMJGyJ3YyOxxe7oJSXSn70e1ogbJ/P90jrdwniJwlNcdbRe0tK5md0FKW+mshy0CD8CVg7ulLNr3W+jtfPLAyPxVmsEVrwpXvOp0tXmsBf4GUiwCKxZXa0AcmwIDAQAB",
   "name": "SAB – עוזר משימות",
   "version": "0.1.0",
   "description": "קורא את המשימה בדף (כולל חלונות קופצים ובר הסיפור), עונה עם Claude ומקורות אמינים, וממלא את התשובות.",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "unlimitedStorage", "tabs", "scripting", "activeTab"],
+  "permissions": ["storage", "unlimitedStorage", "tabs", "scripting", "activeTab", "alarms"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js", "type": "module" },
   "content_scripts": [

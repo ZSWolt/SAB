@@ -16,7 +16,11 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs = {}, ...
   return el;
 }
 
-const send = <T = unknown>(msg: object): Promise<T> => chrome.runtime.sendMessage(msg);
+/** Messages to the background. If the extension was updated, this old copy can't talk to it anymore. */
+const send = <T = unknown>(msg: object): Promise<T> => {
+  if (!chrome.runtime?.id) return Promise.reject(new Error('התוסף התעדכן – תרענן את הדף (F5).'));
+  return chrome.runtime.sendMessage(msg);
+};
 
 export class Panel {
   private host: HTMLElement;
@@ -293,6 +297,7 @@ export class Panel {
   /** solve / review / complete missing fields / solve again. */
   async run(mode: SolveRequest['mode'], extra: Pick<SolveRequest, 'onlyFields' | 'force'> = {}) {
     if (this.busy) return;
+    if (!chrome.runtime?.id) return this.toast('התוסף התעדכן – תרענן את הדף (F5) ואז תנסה שוב.');
     this.busy = true;
     (this.els.solveBtn as HTMLButtonElement).disabled = true;
     (this.els.reviewBtn as HTMLButtonElement).disabled = true;

@@ -16,12 +16,16 @@ const api = {
 };
 Object.assign(globalThis, api);
 
-const w = window as unknown as { __sabPanel?: Panel };
+const w = window as unknown as { __sabPanel?: Panel; __sabVersion?: string };
 const isTop = window === window.top;
+const version = chrome.runtime.getManifest().version;
 
-if (isTop && !w.__sabPanel && document.documentElement) {
+// After the extension updates, the old panel in an open tab is dead: replace it with a new one.
+if (isTop && w.__sabVersion !== version && document.documentElement) {
+  document.querySelectorAll('#sab-helper-host').forEach((el) => el.remove());
   const panel = new Panel();
   w.__sabPanel = panel;
+  w.__sabVersion = version;
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === 'toggle') panel.toggle();

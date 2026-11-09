@@ -103,7 +103,33 @@ chrome.action.onClicked.addListener((tab) => sendToTop(tab.id, { type: 'toggle' 
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   if (reason === 'install') chrome.runtime.openOptionsPage();
+  // After an update, put the new content script into tabs that are already open.
+  if (reason === 'update') {
+    const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+    for (const t of tabs) {
+      if (t.id !== undefined) chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['content.js'] }).catch(() => {});
+    }
+  }
 });
+
+// ---------- auto-update (unpacked install) ----------
+// The Windows updater replaces the files on disk; the extension notices the new build.json and reloads.
+let activeSolves = 0;
+
+async function reloadIfUpdatedOnDisk() {
+  if (activeSolves > 0) return;
+  try {
+    const res = await fetch(chrome.runtime.getURL('build.json'), { cache: 'no-store' });
+    const { version } = (await res.json()) as { version?: string };
+    if (version && version !== chrome.runtime.getManifest().version) chrome.runtime.reload();
+  } catch {
+    /* no build.json: local dev build */
+  }
+}
+chrome.alarms.create('sab-update-check', { periodInMinutes: 10 });
+chrome.alarms.onAlarm.addListener((a) => a.name === 'sab-update-check' && reloadIfUpdatedOnDisk());
+chrome.runtime.onStartup.addListener(reloadIfUpdatedOnDisk);
+(globalThis as unknown as { __sabCheckUpdate?: () => Promise<void> }).__sabCheckUpdate = reloadIfUpdatedOnDisk; // for tests
 
 // ---------- one-shot messages from the panel ----------
 
@@ -226,6 +252,7 @@ chrome.runtime.onConnect.addListener((port) => {
     abort.abort();
   });
   const post = (m: PortMessage) => alive && port.postMessage(m);
+  activeSolves++;
   // MV3 stops an idle service worker after ~30s; a pending fetch doesn't count as activity.
   const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000);
 
@@ -367,6 +394,7 @@ chrome.runtime.onConnect.addListener((port) => {
     } catch (e) {
       post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     } finally {
+      activeSolves = Math.max(0, activeSolves - 1);
       clearInterval(keepAlive);
       if (alive) port.disconnect();
     }

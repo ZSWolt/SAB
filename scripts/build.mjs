@@ -1,11 +1,21 @@
 // Bundles the extension into dist/ (load it in chrome://extensions → "Load unpacked").
 import { build, context } from 'esbuild';
-import { cpSync, mkdirSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 
 const watch = process.argv.includes('--watch');
 rmSync('dist', { recursive: true, force: true });
 mkdirSync('dist', { recursive: true });
 cpSync('static', 'dist', { recursive: true });
+
+// Version: CI sets SAB_VERSION (e.g. 0.2.57). build.json lets the extension notice when the files on
+// disk were replaced by the auto-updater, and reload itself.
+const manifest = JSON.parse(readFileSync('dist/manifest.json', 'utf8'));
+if (process.env.SAB_VERSION) manifest.version = process.env.SAB_VERSION;
+writeFileSync('dist/manifest.json', JSON.stringify(manifest, null, 2));
+writeFileSync(
+  'dist/build.json',
+  JSON.stringify({ version: manifest.version, commit: process.env.GITHUB_SHA ?? 'local', builtAt: new Date().toISOString() }, null, 2),
+);
 
 const options = {
   entryPoints: {

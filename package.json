@@ -9,7 +9,7 @@
     "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "e2e": "node tests/e2e/run.mjs"
+    "e2e": "node tests/e2e/run.mjs && node tests/e2e/update.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0"
