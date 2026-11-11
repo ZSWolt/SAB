@@ -194,6 +194,18 @@ try {
   await page.waitForSelector('#sab-helper-host >> .questions >> text=/תאר את דמות הכלה/');
   console.log('✓ "what was found on the page": 3 fields (one in a cross-origin iframe) + hidden story');
   await shot(page, '1-scan');
+  // "detect again": a question that shows up later is picked up by the always-visible button
+  await page.click('#sab-helper-host >> .scan-head'); // close the card: the button stays visible
+  await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div class="question" id="late"><p>שאלה 9: שאלה שנטענה מאוחר?</p><textarea></textarea></div>'));
+  await page.click('#sab-helper-host >> .scan-again');
+  await page.waitForSelector('#sab-helper-host >> .scan-head .ss >> text=/4 שאלות/');
+  await page.waitForSelector('#sab-helper-host >> .toast >> text=/זוהו 4 שאלות \\(קודם 3\\)/');
+  await page.evaluate(() => document.querySelector('#late').remove());
+  await page.click('#sab-helper-host >> .tabbar >> text=תשובות');
+  await page.click('#sab-helper-host >> .head button[title="זהה מחדש את הדף"]');
+  await page.click('#sab-helper-host >> .tabbar >> text=לוח');
+  await page.waitForSelector('#sab-helper-host >> .scan-head .ss >> text=/3 שאלות/');
+  console.log('✓ "detect again" button (in the card and in the header) re-reads the page and says what changed');
   // story tab (story site: the fixture has the sab-story-site meta that stands in for classe.world)
   await page.click('#sab-helper-host >> .tabbar >> text=סיפור');
   await page.waitForSelector('#sab-helper-host >> article.story >> text=/הכלה יצאה לצוד פרפרים/');

@@ -120,6 +120,7 @@ export class Panel {
     } else {
       swap(this.head, [
         h('div', { class: 'brand' }, h('b', {}, 'SAB'), h('span', { title: document.title }, document.title.slice(0, 40) || 'עוזר משימות'), h('small', {}, `v${chrome.runtime.getManifest().version}`)),
+        iconBtn('refresh', 'זהה מחדש את הדף', () => a.rescan()),
         iconBtn('sliders', 'הגדרות', () => a.openSheet('settings')),
         iconBtn('close', 'סגור', () => this.open(false)),
       ]);
@@ -221,11 +222,22 @@ export class Panel {
   }
 
   // ---------- page reading ----------
-  async scan() {
-    this.store.set({ scanning: true });
+  /** Quick look at the page (no page clicking). `announce`: the student asked, so say what was found. */
+  async scan(announce = false) {
+    if (this.store.get().scanning) return;
+    const prev = this.store.get().scan?.fields;
+    this.store.set({ scanning: true, error: null });
     try {
       const res = await send<{ snapshots: TaggedSnapshot[]; opener: TaggedSnapshot[] }>({ type: 'scan' });
-      this.store.set({ scan: summarizeScan(res?.snapshots ?? [], res?.opener ?? []), scanning: false });
+      const scan = summarizeScan(res?.snapshots ?? [], res?.opener ?? []);
+      this.store.set({ scan, scanning: false });
+      if (announce) {
+        const n = scan.fields ? (scan.fields === 1 ? 'זוהתה שאלה אחת' : `זוהו ${scan.fields} שאלות`) : 'לא זוהו שאלות עם שדה תשובה';
+        const changed = prev !== undefined && prev !== scan.fields;
+        this.toast(`${n}${changed ? ` (קודם ${prev})` : ''}`);
+        const r = this.store.get().result;
+        if (changed && r && scan.fields > r.answers.length) setTimeout(() => this.toast('יש שאלות חדשות. אפשר "השלם חסר" או "פתור מחדש"'), 1800);
+      }
     } catch (e) {
       this.store.set({ scanning: false, error: e instanceof Error ? e.message : String(e) });
     }
@@ -401,7 +413,7 @@ export class Panel {
       showLast: () => set((s) => ({ tab: 'answers', answersMode: s.result ? 'answers' : 'grades', error: null })),
       backToIdle: () => set({ tab: 'board', view: 'idle', error: null }),
       toggleScan: () => set((s) => ({ scanOpen: !s.scanOpen })),
-      rescan: () => this.scan(),
+      rescan: () => this.scan(true),
       toggleRow: (i) => set((s) => ({ openRow: s.openRow === i ? -1 : i })),
       fill: (answers) => this.fill(answers),
       replaceWithImproved: (item: ReviewItem) =>

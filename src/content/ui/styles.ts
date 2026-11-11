@@ -100,6 +100,12 @@ svg { flex: none; display: block; }
 .qpage { font-size: 11px; color: var(--muted); }
 /* "what was found on the page" */
 .card.scan { overflow: hidden; }
+.scan-row { display: flex; align-items: center; }
+.scan-row .scan-head { flex: 1; min-width: 0; }
+.scan-again { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; margin-inline-end: 12px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text2); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.scan-again:hover:not(:disabled) { color: var(--text); border-color: var(--strong); }
+.scan-again:disabled { opacity: 0.6; cursor: default; }
+.scan-again.busy svg { animation: spin 0.9s linear infinite; }
 .scan-head { width: 100%; display: flex; align-items: center; gap: 8px; padding: 12px 16px; border: 0; background: transparent; color: var(--text); cursor: pointer; text-align: right; font: inherit; }
 .scan-head:hover { background: var(--raised); }
 .scan-head .st { font-size: 14px; font-weight: 500; flex: none; }

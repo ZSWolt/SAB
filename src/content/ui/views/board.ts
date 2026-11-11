@@ -140,12 +140,22 @@ function scanCard(s: UIState, a: Actions): HTMLElement {
     'div',
     { class: `card scan${s.scanOpen ? ' open' : ''}` },
     h(
-      'button',
-      { type: 'button', class: 'scan-head', 'aria-expanded': String(s.scanOpen), onclick: () => a.toggleScan() },
-      s.scanning ? h('span', { class: 'spinner' }) : icon('scan'),
-      h('span', { class: 'st' }, 'מה זוהה בדף'),
-      h('span', { class: 'ss' }, summary),
-      icon('chevron'),
+      'div',
+      { class: 'scan-row' },
+      h(
+        'button',
+        { type: 'button', class: 'scan-head', 'aria-expanded': String(s.scanOpen), onclick: () => a.toggleScan() },
+        s.scanning ? h('span', { class: 'spinner' }) : icon('scan'),
+        h('span', { class: 'st' }, 'מה זוהה בדף'),
+        h('span', { class: 'ss' }, summary),
+        icon('chevron'),
+      ),
+      h(
+        'button',
+        { type: 'button', class: `scan-again${s.scanning ? ' busy' : ''}`, disabled: s.scanning || s.busy, title: 'קורא את הדף שוב ומזהה את השאלות', onclick: () => a.rescan() },
+        icon('refresh', 14),
+        'זהה מחדש',
+      ),
     ),
     s.scanOpen
       ? h(
@@ -171,7 +181,7 @@ function scanCard(s: UIState, a: Actions): HTMLElement {
               )
             : h('div', { class: 'muted' }, s.scanning ? 'קורא את הדף' : 'לא זוהו שדות תשובה בדף. Claude יענה על השאלות שבטקסט, ואת התשובות אפשר להעתיק'),
           sc && sc.pages > 1 ? h('div', { class: 'muted' }, 'בפתרון אעבור על כל העמודים ואחזור לעמוד שלך') : null,
-          h('div', { class: 'tools', style: 'margin:0' }, btn('קרא שוב', () => a.rescan(), { cls: 'ghost sm', icon: 'refresh' }), btn('ייצא מבנה דף', () => a.exportStructure(), { cls: 'ghost sm', icon: 'download' })),
+          h('div', { class: 'tools', style: 'margin:0' }, btn('ייצא מבנה דף', () => a.exportStructure(), { cls: 'ghost sm', icon: 'download' })),
         )
       : null,
   );

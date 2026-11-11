@@ -33,6 +33,7 @@ export function storyTab(s: UIState, a: Actions, d: Drafts): Rendered {
         { class: 'tools' },
         s.storySite ? btn('פתח את בר הסיפור', () => a.openStoryBar(), { cls: 'ghost', icon: 'book' }) : null,
         btn('בחר את הסיפור בדף', () => a.pickStory(), { cls: 'ghost', icon: 'pick' }),
+        btn('זהה מחדש', () => a.rescan(), { cls: 'ghost', icon: 'refresh' }),
       ),
       h('label', { class: 'field' }, 'או הדבק את הסיפור', manual),
     ],
