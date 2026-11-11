@@ -24,12 +24,17 @@ export interface ScanSummary {
 
 export type ThemeName = 'notebook' | 'focus' | 'school';
 export type View = 'idle' | 'working' | 'results' | 'review';
-export type Sheet = null | 'story' | 'history' | 'settings';
-export type Tab = 'board' | 'chat';
+export type Sheet = null | 'settings';
+export type Tab = 'board' | 'answers' | 'chat' | 'story' | 'history';
+/** In the answers tab, when there are both answers and a check-me review. */
+export type AnswersMode = 'answers' | 'grades';
 export type Filter = 'all' | 'missing' | 'unfilled' | 'filled';
 
 export interface UIState {
   tab: Tab;
+  answersMode: AnswersMode;
+  /** classe.world: literature, so the story is looked for automatically. */
+  storySite: boolean;
   filter: Filter;
   chat: ChatMessage[];
   chatBusy: boolean;
@@ -67,6 +72,8 @@ export const STEP_ORDER: StepId[] = ['pages', 'story', 'videos', 'search', 'writ
 export function initialState(): UIState {
   return {
     tab: 'board',
+    answersMode: 'answers',
+    storySite: false,
     filter: 'all',
     chat: [],
     chatBusy: false,

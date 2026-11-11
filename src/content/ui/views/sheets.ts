@@ -4,9 +4,10 @@ import { icon } from '../icons';
 import type { UIState } from '../store';
 import type { Actions, Drafts, Rendered } from './types';
 
-export const SHEET_TITLES = { story: 'סיפור', history: 'היסטוריה', settings: 'הגדרות' } as const;
+export const SHEET_TITLES = { settings: 'הגדרות' } as const;
 
-export function storySheet(s: UIState, a: Actions, d: Drafts): Rendered {
+/** Story tab. The story is found automatically only in literature on classe; anywhere else it can be picked or pasted. */
+export function storyTab(s: UIState, a: Actions, d: Drafts): Rendered {
   const story = s.scan?.story;
   const docs = s.scan?.docs ?? [];
   const manual = h('textarea', { placeholder: 'הטקסט יישלח יחד עם השאלות', style: 'min-height:96px', 'aria-label': 'הדבק סיפור' }) as HTMLTextAreaElement;
@@ -24,14 +25,21 @@ export function storySheet(s: UIState, a: Actions, d: Drafts): Rendered {
         : null,
       story
         ? h('article', { class: 'card story' }, story.title ? h('h2', {}, story.title) : null, story.text)
-        : h('div', { class: 'card story empty' }, 'עוד לא זוהה סיפור. אפשר לפתוח את בר הסיפור, לבחור אותו בדף, או להדביק אותו למטה'),
-      h('div', { class: 'tools' }, btn('פתח את בר הסיפור', () => a.openStoryBar(), { cls: 'ghost', icon: 'book' }), btn('בחר את הסיפור בדף', () => a.pickStory(), { cls: 'ghost', icon: 'pick' })),
+        : s.storySite
+          ? h('div', { class: 'card story empty' }, s.scanning ? 'מחפש את הסיפור' : 'עוד לא זוהה סיפור. אפשר לפתוח את בר הסיפור, לבחור אותו בדף, או להדביק אותו למטה')
+          : h('div', { class: 'card story empty' }, 'זיהוי אוטומטי של סיפור פועל רק בספרות, ב-classe. כאן אפשר לבחור סיפור בדף או להדביק אותו למטה, והוא יישלח יחד עם השאלות'),
+      h(
+        'div',
+        { class: 'tools' },
+        s.storySite ? btn('פתח את בר הסיפור', () => a.openStoryBar(), { cls: 'ghost', icon: 'book' }) : null,
+        btn('בחר את הסיפור בדף', () => a.pickStory(), { cls: 'ghost', icon: 'pick' }),
+      ),
       h('label', { class: 'field' }, 'או הדבק את הסיפור', manual),
     ],
   };
 }
 
-export function historySheet(s: UIState, a: Actions): Rendered {
+export function historyTab(s: UIState, a: Actions): Rendered {
   const hist = s.history;
   if (!hist) return { body: h('div', { class: 'status' }, h('span', { class: 'spinner' }), h('span', { class: 't' }, 'טוען')) };
   return {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { extractFrame } from '../../src/content/extract';
+import { extractFrame, isStorySite } from '../../src/content/extract';
 
 const LONG = 'זהו קטע מתוך הסיפור. '.repeat(120);
 
@@ -7,7 +7,14 @@ function page(html: string) {
   document.body.innerHTML = html;
 }
 
+/** Story detection runs only on classe.world; tests turn it on with the meta tag. */
+function storySite(on: boolean) {
+  document.head.querySelector('meta[name="sab-story-site"]')?.remove();
+  if (on) document.head.insertAdjacentHTML('beforeend', '<meta name="sab-story-site">');
+}
+
 beforeEach(() => {
+  storySite(false);
   document.body.innerHTML = '';
   (window as any).__sabCounter = 0;
 });
@@ -90,6 +97,8 @@ describe('moodle', () => {
 });
 
 describe('story side bar', () => {
+  beforeEach(() => storySite(true));
+
   it('finds a collapsed story panel and keeps it out of the page text', () => {
     page(`
       <main><h1>משימה בספרות</h1><p>ענה על השאלות לפי הסיפור.</p><textarea></textarea></main>
@@ -98,6 +107,19 @@ describe('story side bar', () => {
     expect(snap.story?.text).toContain('קטע מתוך הסיפור');
     expect(snap.story?.title).toBe('הכלה ומצוד הפרפרים');
     expect(snap.fullText).not.toContain('קטע מתוך הסיפור');
+  });
+
+  it('looks for a story only on classe.world (literature)', () => {
+    const html = `<main><h1>משימה</h1><textarea></textarea></main><aside class="story-drawer" hidden><h3>כותרת</h3><div>${LONG}</div></aside>`;
+    storySite(false);
+    page(html);
+    expect(isStorySite()).toBe(false);
+    const snap = extractFrame();
+    expect(snap.story).toBeUndefined();
+    expect(snap.fullText).not.toContain('קטע מתוך הסיפור'); // hidden text isn't page text either
+    expect(isStorySite(document, { hostname: 'www.classe.world' } as Location)).toBe(true);
+    expect(isStorySite(document, { hostname: 'bagruthumanities.cet.ac.il' } as Location)).toBe(false);
+    expect(isStorySite(document, { hostname: 'notclasse.world.evil.com' } as Location)).toBe(false);
   });
 
   it('does not call ordinary page text a story', () => {

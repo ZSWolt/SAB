@@ -10,7 +10,7 @@ const NAMES = {
   camera: 'camera', review: 'clipboard-check', save: 'clock', history: 'clock',
   sliders: 'settings-2', back: 'arrow-right', window: 'app-window', pause: 'pause', chevron: 'chevron-down',
   key: 'key-round', external: 'external-link', stop: 'square', board: 'layout-dashboard', chat: 'message-circle',
-  send: 'arrow-up',
+  send: 'arrow-up', answers: 'list-checks', scan: 'scan-search',
 };
 
 const attrs = (o) => Object.entries(o).map(([k, v]) => `${k}="${v}"`).join(' ');

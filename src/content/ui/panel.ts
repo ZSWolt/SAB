@@ -2,14 +2,16 @@ import { DEFAULT_SETTINGS, getSettings, saveSettings, type Settings } from '../.
 import type { Answer, ChatMessage, FillOutcome, PortMessage, ReviewItem, SolveRequest, SolveResult, TaggedSnapshot, TaskSummary } from '../../shared/types';
 import { questionLine } from '../../background/coverage';
 import { PANEL_HOST_ID } from '../text';
+import { isStorySite } from '../extract';
 import { h, iconBtn, swap } from './dom';
 import { loadFonts } from './fonts';
 import { icon } from './icons';
-import { createStore, resolveTheme, upsertStep, type Filter, type ScanSummary, type Sheet, type Tab, type UIState } from './store';
+import { createStore, initialState, resolveTheme, upsertStep, type AnswersMode, type Filter, type ScanSummary, type Sheet, type Tab, type UIState } from './store';
 import { PANEL_CSS } from './styles';
+import { answersView } from './views/answers';
 import { boardView } from './views/board';
 import { chatView } from './views/chat';
-import { historySheet, settingsSheet, SHEET_TITLES, storySheet } from './views/sheets';
+import { historyTab, settingsSheet, SHEET_TITLES, storyTab } from './views/sheets';
 import type { Actions, Drafts, Rendered } from './views/types';
 
 /** Messages to the background. If the extension was updated, this old copy can't talk to it anymore. */
@@ -48,7 +50,8 @@ export class Panel {
   private body!: HTMLElement;
   private foot!: HTMLElement;
   private chatPort: chrome.runtime.Port | null = null;
-  private store = createStore();
+  private store = createStore({ ...initialState(), storySite: isStorySite() });
+  private lastTab: Tab | null = null;
   private drafts: Drafts = { note: '', shot: false, manualStory: '', chat: '' };
   private port: chrome.runtime.Port | null = null;
   private prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)');
@@ -117,16 +120,26 @@ export class Panel {
     } else {
       swap(this.head, [
         h('div', { class: 'brand' }, h('b', {}, 'SAB'), h('span', { title: document.title }, document.title.slice(0, 40) || 'עוזר משימות'), h('small', {}, `v${chrome.runtime.getManifest().version}`)),
-        iconBtn('book', 'סיפור', () => a.openSheet('story')),
-        iconBtn('history', 'היסטוריה', () => a.openSheet('history')),
         iconBtn('sliders', 'הגדרות', () => a.openSheet('settings')),
         iconBtn('close', 'סגור', () => this.open(false)),
       ]);
       this.head.className = 'head';
     }
-    const tab = (id: Tab, label: string, name: 'board' | 'chat') =>
-      h('button', { type: 'button', role: 'tab', 'aria-selected': String(s.tab === id), onclick: () => a.setTab(id) }, icon(name), label);
-    swap(this.tabbar, s.sheet ? null : [tab('board', 'לוח', 'board'), tab('chat', 'שיחה', 'chat')]);
+    const count = s.result ? s.result.answers.length : s.review ? s.review.items.length : 0;
+    const tab = (id: Tab, label: string, name: 'board' | 'answers' | 'chat' | 'book' | 'history', badge?: number) =>
+      h(
+        'button',
+        { type: 'button', role: 'tab', 'data-tab': id, 'aria-selected': String(s.tab === id), onclick: () => a.setTab(id) },
+        icon(name, 14),
+        label,
+        badge ? h('span', { class: 'tcount' }, String(badge)) : null,
+      );
+    swap(
+      this.tabbar,
+      s.sheet
+        ? null
+        : [tab('board', 'לוח', 'board'), tab('answers', 'תשובות', 'answers', count), tab('chat', 'שיחה', 'chat'), tab('story', 'סיפור', 'book'), tab('history', 'היסטוריה', 'history')],
+    );
     this.tabbar.style.display = s.sheet ? 'none' : '';
     const view = this.viewFor(s);
     swap(this.top, view.top ?? null);
@@ -134,16 +147,20 @@ export class Panel {
     swap(this.foot, view.foot ?? null);
     this.foot.style.padding = !s.sheet && s.tab === 'chat' ? '0' : '';
     this.foot.style.display = !s.sheet && s.tab === 'chat' ? 'block' : '';
-    if (!s.sheet && s.tab === 'chat') this.body.scrollTop = this.body.scrollHeight;
+    const where: Tab | null = s.sheet ? null : s.tab;
+    if (where !== this.lastTab) this.body.scrollTop = 0; // a new tab starts at its top
+    this.lastTab = where;
+    if (where === 'chat') this.body.scrollTop = this.body.scrollHeight;
     this.fabWrap.classList.toggle('beside', this.isOpen());
   }
 
   private viewFor(s: UIState): Rendered {
     const a = this.actions;
-    if (s.sheet === 'story') return storySheet(s, a, this.drafts);
-    if (s.sheet === 'history') return historySheet(s, a);
     if (s.sheet === 'settings') return settingsSheet(s, a);
+    if (s.tab === 'answers') return answersView(s, a);
     if (s.tab === 'chat') return chatView(s, a, this.drafts);
+    if (s.tab === 'story') return storyTab(s, a, this.drafts);
+    if (s.tab === 'history') return historyTab(s, a);
     return boardView(s, a, this.drafts);
   }
 
@@ -279,13 +296,13 @@ export class Panel {
         set({ status: `חושב · ${m.text.replace(/\s+/g, ' ').slice(-140)}` });
         break;
       case 'result':
-        set({ result: m.result, view: 'results', busy: false, openRow: -1, filled: this.keepFilled(m.result) });
+        set({ result: m.result, view: 'results', busy: false, openRow: -1, filled: this.keepFilled(m.result), ...this.showAnswers('answers') });
         break;
       case 'cached':
-        set({ result: m.result, view: 'results', busy: false, openRow: -1, savedAt: m.at, savedElsewhere: false });
+        set({ result: m.result, view: 'results', busy: false, openRow: -1, savedAt: m.at, savedElsewhere: false, ...this.showAnswers('answers') });
         break;
       case 'review':
-        set({ review: m.review, view: 'review', busy: false, openRow: 0, filled: {} });
+        set({ review: m.review, view: 'review', busy: false, openRow: 0, filled: {}, ...this.showAnswers('grades') });
         break;
       case 'error': {
         const cur = this.store.get();
@@ -293,6 +310,12 @@ export class Panel {
         break;
       }
     }
+  }
+
+  /** Results open the answers tab, unless the student went off to chat or read the story meanwhile. */
+  private showAnswers(mode: AnswersMode): Partial<UIState> {
+    const tab = this.store.get().tab;
+    return tab === 'board' || tab === 'answers' ? { tab: 'answers', answersMode: mode, filter: 'all' } : { answersMode: mode };
   }
 
   /** After "complete the missing", keep the fill marks of answers that didn't change. */
@@ -319,7 +342,7 @@ export class Panel {
         const next: ChatMessage[] = [...this.store.get().chat, { role: 'assistant', text: m.text, answers: m.answers, costUsd: m.costUsd }];
         this.store.set({ chat: next, chatBusy: false, chatLive: '', chatStatus: '', ...(m.result ? { result: m.result } : {}) });
         send({ type: 'chat-save', chat: next }).catch(() => {});
-        if (m.answers.length) this.toast(m.answers.length === 1 ? 'התשובה עודכנה גם בלוח' : `${m.answers.length} תשובות עודכנו גם בלוח`);
+        if (m.answers.length) this.toast(m.answers.length === 1 ? 'התשובה עודכנה גם בלשונית תשובות' : `${m.answers.length} תשובות עודכנו גם בלשונית תשובות`);
       } else if (m.type === 'error') {
         this.store.set({ chatBusy: false, chatLive: '', error: m.message });
       }
@@ -375,8 +398,8 @@ export class Panel {
         set({ busy: false, view: cur.result ? 'results' : 'idle', status: '' });
         this.toast('העבודה נעצרה');
       },
-      showLast: () => set((s) => ({ view: s.result ? 'results' : 'review', error: null })),
-      backToIdle: () => set({ view: 'idle', error: null }),
+      showLast: () => set((s) => ({ tab: 'answers', answersMode: s.result ? 'answers' : 'grades', error: null })),
+      backToIdle: () => set({ tab: 'board', view: 'idle', error: null }),
       toggleScan: () => set((s) => ({ scanOpen: !s.scanOpen })),
       rescan: () => this.scan(),
       toggleRow: (i) => set((s) => ({ openRow: s.openRow === i ? -1 : i })),
@@ -399,11 +422,7 @@ export class Panel {
         if (r?.missing?.length) this.run('solve', { onlyFields: r.missing.map((m) => m.field_id) });
       },
       solveAgain: () => this.run('solve', { force: true }),
-      openSheet: (sheet: Exclude<Sheet, null>) => {
-        set({ sheet });
-        if (sheet === 'history') this.loadHistory();
-        if (sheet === 'story' && !this.store.get().scan) this.scan();
-      },
+      openSheet: (sheet: Exclude<Sheet, null>) => set({ sheet }),
       closeSheet: () => set({ sheet: null }),
       saveKey: async (key) => {
         if (!/^sk-ant-/.test(key)) return set({ keyStatus: 'המפתח צריך להתחיל ב-sk-ant-' });
@@ -434,9 +453,15 @@ export class Panel {
         const r = await send<{ result: SolveResult; at: number; url: string } | null>({ type: 'history-open', key }).catch(() => null);
         if (!r) return this.toast('לא נמצאו תשובות שמורות');
         const elsewhere = r.url.split('#')[0] !== location.href.split('#')[0];
-        set({ result: r.result, view: 'results', sheet: null, savedAt: r.at, savedElsewhere: elsewhere, openRow: -1, filled: {} });
+        set({ result: r.result, view: 'results', sheet: null, tab: 'answers', answersMode: 'answers', filter: 'all', savedAt: r.at, savedElsewhere: elsewhere, openRow: -1, filled: {} });
       },
-      setTab: (tab: Tab) => set({ tab, error: null }),
+      setTab: (tab: Tab) => {
+        set({ tab, sheet: null, error: null, openRow: -1 });
+        if (tab === 'history') this.loadHistory();
+        if (tab === 'story' && !this.store.get().scan && !this.store.get().scanning) this.scan();
+      },
+      openAnswers: (mode: AnswersMode) => set({ tab: 'answers', answersMode: mode, sheet: null, filter: 'all', openRow: -1 }),
+      setAnswersMode: (mode: AnswersMode) => set({ answersMode: mode, openRow: -1 }),
       setFilter: (filter: Filter) => set({ filter, openRow: -1 }),
       sendChat: (text: string) => this.sendChat(text),
       stopChat: () => {
@@ -482,7 +507,7 @@ export class Panel {
       document.removeEventListener('keydown', key, true);
       box.remove();
       this.open(true);
-      this.store.set({ sheet: 'story' });
+      this.store.set({ sheet: null, tab: 'story' });
       if (pick && target) {
         (window as unknown as { __sabManualStory?: Element }).__sabManualStory = target;
         this.scan();

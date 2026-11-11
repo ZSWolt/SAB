@@ -22,6 +22,33 @@ export function detectAdapter(loc: Location = location): string {
   return 'generic';
 }
 
+const STORY_HOST = /(^|\.)classe\.world$/;
+
+/**
+ * Literature (and with it the story and its side bar) is only on classe.world, so the story is
+ * looked for automatically only there. Frames inside a classe page count too. A
+ * <meta name="sab-story-site"> turns it on for test pages.
+ */
+export function isStorySite(doc: Document = document, loc: Location = location): boolean {
+  if (STORY_HOST.test(loc.hostname)) return true;
+  const ancestors = (loc as Location & { ancestorOrigins?: DOMStringList }).ancestorOrigins;
+  if (ancestors) {
+    for (let i = 0; i < ancestors.length; i++) {
+      try {
+        if (STORY_HOST.test(new URL(ancestors[i]).hostname)) return true;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  if (doc.querySelector('meta[name="sab-story-site"]')) return true;
+  try {
+    return !!window.top?.document.querySelector('meta[name="sab-story-site"]');
+  } catch {
+    return false; // cross-origin parent
+  }
+}
+
 /** Reads this frame: answer fields with their question text, the story (if any) and the page text. */
 export function extractFrame(doc: Document = document): FrameSnapshot {
   const isTop = window === window.top;
@@ -30,7 +57,9 @@ export function extractFrame(doc: Document = document): FrameSnapshot {
   const manual = (window as unknown as { __sabManualStory?: Element }).__sabManualStory;
   const found = manual && manual.isConnected
     ? { info: { text: getText(manual), source: 'manual' }, element: manual }
-    : findStory(doc, isTop);
+    : isStorySite(doc)
+      ? findStory(doc, isTop)
+      : null;
 
   const fullText = doc.body
     ? getText(doc.body, {

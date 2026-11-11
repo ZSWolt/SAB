@@ -32,7 +32,7 @@ function intro(s: UIState): string {
   const sc = s.scan;
   if (s.result) {
     const missing = s.result.missing?.length ?? 0;
-    return `התשובות למשימה מוכנות${missing ? `, ו${plural(missing, 'שאלה אחת חסרה', 'שאלות חסרות')}` : ''}. אפשר לבקש ממני לקצר, להסביר, לתרגם או לשנות תשובה, ואני אעדכן אותה גם בלוח`;
+    return `התשובות למשימה מוכנות${missing ? `, ו${plural(missing, 'שאלה אחת חסרה', 'שאלות חסרות')}` : ''}. אפשר לבקש ממני לקצר, להסביר, לתרגם או לשנות תשובה, ואני אעדכן אותה גם בלשונית תשובות`;
   }
   if (sc && sc.fields) {
     return `מצאתי במשימה ${plural(sc.fields, 'שאלה אחת', 'שאלות')}${sc.pages > 1 ? ` ב-${sc.pages} עמודים` : ''}${sc.story ? `, ואת הסיפור "${(sc.story.title ?? '').slice(0, 40)}"` : ''}. אפשר לשאול אותי על המשימה, או לבקש שאפתור אותה`;

@@ -124,7 +124,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/pdf' });
     return res.end('%PDF-1.4\n% fake story pdf for the test\n%%EOF');
   }
-  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html' }[url.pathname];
+  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html' }[url.pathname];
   if (!file) return res.writeHead(404).end();
   let html = readFileSync(resolve('tests/fixtures', file), 'utf8');
   // the iframe is served from another origin (127.0.0.1 vs localhost) to test cross-origin frames
@@ -184,12 +184,22 @@ try {
   await page.waitForSelector('#sab-helper-host >> .panel.open');
   console.log('✓ hidden button comes back with Alt+Shift+S');
 
-  // quick look runs by itself when the panel opens: counters, tags and the question list
+  // quick look runs by itself when the panel opens; "what was found" opens into tags and the question list
+  await page.waitForSelector('#sab-helper-host >> .scan-head .ss >> text=/3 שאלות/');
+  assert.equal(await page.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.questions .item').length), 0, 'closed by default');
+  await page.click('#sab-helper-host >> .scan-head');
   await page.waitForFunction(() => document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.questions .item').length === 3);
   await page.waitForSelector('#sab-helper-host >> .tag >> text=/סיפור: /');
   await page.waitForSelector('#sab-helper-host >> .tag >> text=סרטון אחד');
   await page.waitForSelector('#sab-helper-host >> .questions >> text=/תאר את דמות הכלה/');
-  console.log('✓ scan: 3 fields (one in a cross-origin iframe) + hidden story');
+  console.log('✓ "what was found on the page": 3 fields (one in a cross-origin iframe) + hidden story');
+  await shot(page, '1-scan');
+  // story tab (story site: the fixture has the sab-story-site meta that stands in for classe.world)
+  await page.click('#sab-helper-host >> .tabbar >> text=סיפור');
+  await page.waitForSelector('#sab-helper-host >> article.story >> text=/הכלה יצאה לצוד פרפרים/');
+  await page.waitForSelector('#sab-helper-host >> text=פתח את בר הסיפור');
+  await page.click('#sab-helper-host >> .tabbar >> text=לוח');
+  console.log('✓ story tab shows the detected story');
 
   // solve
   await page.click('#sab-helper-host >> .btn.primary.big');
@@ -202,6 +212,10 @@ try {
   assert.deepEqual(storyBlock.cache_control, { type: 'ephemeral' }, 'story block is cached');
   console.log('✓ PDF linked in the task is downloaded and sent; story block marked for caching');
 
+  await page.waitForSelector('#sab-helper-host >> .tabbar button[data-tab="answers"][aria-selected="true"]');
+  await page.waitForSelector('#sab-helper-host >> .answers .qbadge >> text=שאלה 1');
+  await page.waitForSelector('#sab-helper-host >> .tabbar .tcount >> text=2');
+  console.log('✓ results open the answers tab, each answer with its question number');
   await page.waitForSelector('#sab-helper-host >> .chip.bad >> text=חסר');
   await page.click('#sab-helper-host >> .seg >> text=/חסר/');
   assert.equal(await page.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.answers .item').length), 1, 'filter shows only the missing one');
@@ -257,13 +271,18 @@ try {
   await shot(page, '6-chat');
   await page.click('#sab-helper-host >> .upd >> text=מלא בשדה');
   await page.waitForFunction(() => document.querySelector('#q1').value === 'תשובה קצרה מהשיחה');
-  await page.click('#sab-helper-host >> .tabbar >> text=לוח');
+  await page.click('#sab-helper-host >> .tabbar >> text=תשובות');
   await page.waitForSelector('#sab-helper-host >> .answers >> text=תשובה קצרה מהשיחה');
-  console.log('✓ chat tab: streamed reply, updated answer card, fill, and the board shows the new answer');
+  console.log('✓ chat tab: streamed reply, updated answer card, fill, and the answers tab shows the new answer');
+
+  // board after a result: summary card that leads to the answers
+  await page.click('#sab-helper-host >> .tabbar >> text=לוח');
+  await page.click('#sab-helper-host >> text=פתח את התשובות');
+  await page.waitForSelector('#sab-helper-host >> .tabbar button[data-tab="answers"][aria-selected="true"]');
+  await page.click('#sab-helper-host >> .tabbar >> text=לוח');
 
   // same page again → saved answers, no new request
   const before = requests.length;
-  await page.click('#sab-helper-host >> text=חזרה למסך הפתיחה');
   await page.click('#sab-helper-host >> .btn.primary.big');
   await page.waitForSelector('#sab-helper-host >> text=/כבר פתרת את הדף הזה/');
   assert.equal(requests.length, before, 'no API call for an already solved page');
@@ -285,7 +304,7 @@ try {
   console.log('✓ page 2: story + PDF + earlier answers remembered from page 1');
 
   // history tab
-  await page2.click('#sab-helper-host >> button[title="היסטוריה"]');
+  await page2.click('#sab-helper-host >> .tabbar >> text=היסטוריה');
   await page2.waitForSelector('#sab-helper-host >> text=/הוצאה החודש/');
   await page2.waitForSelector('#sab-helper-host >> .hist >> text=משימה בספרות');
   await shot(page2, '5-history');
@@ -293,10 +312,17 @@ try {
 
   // check me
   await page2.fill('#q5', 'הפרפרים מסמלים חופש');
-  await page2.click('#sab-helper-host >> button[title="חזרה"]');
-  await page2.click('#sab-helper-host >> text=חזרה למסך הפתיחה');
+  await page2.click('#sab-helper-host >> .tabbar >> text=לוח');
   await page2.click('#sab-helper-host >> .btn.review');
   await page2.waitForSelector('#sab-helper-host >> text=/ציון ממוצע 55/', { timeout: 20000 });
+  await page2.waitForSelector('#sab-helper-host >> .tabbar button[data-tab="answers"][aria-selected="true"]');
+  await page2.waitForSelector('#sab-helper-host >> .reviews .qbadge >> text=שאלה 5');
+  // both answers and grades exist → a switch between them
+  await page2.click('#sab-helper-host >> .seg >> text=תשובות');
+  await page2.waitForSelector('#sab-helper-host >> .list.answers');
+  await page2.click('#sab-helper-host >> .seg >> text=ציונים');
+  await page2.waitForSelector('#sab-helper-host >> .list.reviews');
+  console.log('✓ check-me grades show in the answers tab, with a switch to the answers');
   await page2.waitForSelector('#sab-helper-host >> .reviews >> text=/מה הקשר בין הפרפרים לכלה/');
   await page2.waitForSelector('#sab-helper-host >> text=/כתבת: הפרפרים מסמלים חופש/');
   console.log('✓ check-me shows the real question text and what the student wrote');
@@ -304,6 +330,7 @@ try {
   assert.ok(rv.tools.some((t) => t.name === 'submit_review'));
   assert.ok(rv.messages[0].content.map((c) => c.text ?? '').join('\n').includes('הפרפרים מסמלים חופש'));
   await shot(page2, '4-review');
+  await page2.click('#sab-helper-host >> .reviews button.crow >> nth=0');
   await page2.click('#sab-helper-host >> text=/החלף בגרסה המשופרת/');
   await page2.waitForFunction(() => document.querySelector('#q5').value === 'תשובה משופרת מהבדיקה');
   console.log('✓ check-me: grade + comments, and "replace with improved" fills the field');
@@ -364,28 +391,72 @@ try {
       }, theme);
       await page.waitForSelector(`#sab-helper-host >> .root[data-theme="${theme}"]`, { state: 'attached' });
       await page.click('#sab-helper-host >> button[title="חזרה"]').catch(() => {});
-      await page.click('#sab-helper-host >> text=חזרה למסך הפתיחה').catch(() => {});
-      await shot(page, `t-${theme}-1-idle`);
-      await page.click('#sab-helper-host >> text=/הצג את התשובות האחרונות/');
-      await page.click('#sab-helper-host >> .answers button.crow >> nth=1');
-      await shot(page, `t-${theme}-2-results`);
-      await page.click('#sab-helper-host >> .tabbar >> text=שיחה');
-      await page.waitForTimeout(150);
-      await shot(page, `t-${theme}-4-chat`);
       await page.click('#sab-helper-host >> .tabbar >> text=לוח');
-      await shot(page, `t-${theme}-2-results`);
-      for (const sheet of ['סיפור', 'היסטוריה', 'הגדרות']) {
-        await page.click(`#sab-helper-host >> button[title="${sheet}"]`);
+      await page.waitForTimeout(150);
+      await shot(page, `t-${theme}-1-board`);
+      await page.click('#sab-helper-host >> .tabbar >> text=תשובות');
+      await page.click('#sab-helper-host >> .answers button.crow >> nth=1').catch(() => {});
+      await shot(page, `t-${theme}-2-answers`);
+      for (const [tab, name] of [['שיחה', '4-chat'], ['סיפור', '3-story'], ['היסטוריה', '3-history']]) {
+        await page.click(`#sab-helper-host >> .tabbar >> text=${tab}`);
         await page.waitForTimeout(200);
-        await shot(page, `t-${theme}-3-${sheet}`);
-        await page.click('#sab-helper-host >> button[title="חזרה"]');
+        await shot(page, `t-${theme}-${name}`);
       }
+      await page.click('#sab-helper-host >> button[title="הגדרות"]');
+      await page.waitForTimeout(200);
+      await shot(page, `t-${theme}-3-settings`);
+      await page.click('#sab-helper-host >> button[title="חזרה"]');
     }
     await sw.evaluate(async () => {
       const { settings } = await chrome.storage.local.get('settings');
       await chrome.storage.local.set({ settings: { ...settings, theme: 'auto' } });
     });
   }
+
+  // a long task on a site that isn't classe: no story is picked up, and the answers tab scrolls
+  const many = await ctx.newPage();
+  await many.setViewportSize({ width: 1100, height: 700 });
+  await many.goto(`http://localhost:${port}/many.html`);
+  await many.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await many.keyboard.press('Alt+Shift+S');
+  await many.waitForSelector('#sab-helper-host >> .scan-head .ss >> text=/15 שאלות/');
+  assert.ok(!(await many.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelector('.scan-head .ss').textContent)).includes('סיפור'), 'no story off classe');
+  await many.click('#sab-helper-host >> .tabbar >> text=סיפור');
+  await many.waitForSelector('#sab-helper-host >> text=/זיהוי אוטומטי של סיפור פועל רק בספרות/');
+  assert.equal(await many.isVisible('#sab-helper-host >> text=פתח את בר הסיפור'), false);
+  console.log('✓ off classe: no automatic story, the story tab offers pick / paste');
+  await many.click('#sab-helper-host >> .tabbar >> text=לוח');
+  await many.click('#sab-helper-host >> .btn.primary.big');
+  await many.waitForSelector('#sab-helper-host >> .rl >> text=15/15', { timeout: 20000 });
+  const manyStory = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
+  assert.ok(!manyStory.includes('<story'), 'no story sent off classe');
+  await many.waitForSelector('#sab-helper-host >> .answers .qbadge >> text=שאלה 15');
+  const scroll = await many.evaluate(async () => {
+    const body = document.querySelector('#sab-helper-host').shadowRoot.querySelector('.body');
+    const before = body.scrollTop;
+    body.scrollTop = 10000;
+    await new Promise((r) => setTimeout(r, 50));
+    return { sh: body.scrollHeight, ch: body.clientHeight, before, after: body.scrollTop };
+  });
+  assert.ok(scroll.sh > scroll.ch && scroll.after > scroll.before, `answers tab scrolls ${JSON.stringify(scroll)}`);
+  // the mouse wheel scrolls it too
+  await many.evaluate(() => (document.querySelector('#sab-helper-host').shadowRoot.querySelector('.body').scrollTop = 0));
+  await many.mouse.move(200, 400);
+  await many.mouse.wheel(0, 600);
+  await many.waitForTimeout(300);
+  assert.ok(await many.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelector('.body').scrollTop) > 0, 'wheel scrolls the answers tab');
+  const lastVisible = await many.evaluate(() => {
+    const body = document.querySelector('#sab-helper-host').shadowRoot.querySelector('.body');
+    body.scrollTop = 10000;
+    const items = body.querySelectorAll('.answers .item');
+    const r = items[items.length - 1].getBoundingClientRect();
+    const b = body.getBoundingClientRect();
+    return r.bottom <= b.bottom + 1 && r.top >= b.top;
+  });
+  assert.ok(lastVisible, 'question 15 can be scrolled into view');
+  await shot(many, '8-scroll');
+  console.log('✓ answers tab scrolls (15 questions, wheel and to the last one)');
+  await many.close();
 
   // first run: no key → "connect Claude" card, paste the key in the panel
   await sw.evaluate(async () => {

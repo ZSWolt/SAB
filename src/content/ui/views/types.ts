@@ -1,7 +1,7 @@
 import type { Settings } from '../../../shared/settings';
 import type { Answer, ReviewItem } from '../../../shared/types';
 import type { Kid } from '../dom';
-import type { Filter, Sheet, Tab } from '../store';
+import type { AnswersMode, Filter, Sheet, Tab } from '../store';
 
 /** What the views can ask the panel to do. Views only draw; the panel does the work. */
 export interface Actions {
@@ -31,6 +31,9 @@ export interface Actions {
   openHistory(key: string): void;
   deleteHistory(key: string): void;
   setTab(tab: Tab): void;
+  /** Answers tab, showing the answers or the check-me grades. */
+  openAnswers(mode: AnswersMode): void;
+  setAnswersMode(mode: AnswersMode): void;
   setFilter(filter: Filter): void;
   sendChat(text: string): void;
   stopChat(): void;
