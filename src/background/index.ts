@@ -494,7 +494,7 @@ chrome.runtime.onConnect.addListener((port) => {
   const post = (m: PortMessage) => alive && port.postMessage(m);
   const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000);
 
-  port.onMessage.addListener(async (req: { messages: ChatMessage[] }) => {
+  port.onMessage.addListener(async (req: { messages: ChatMessage[]; result?: SolveResult | null }) => {
     if (tabId === undefined) return;
     try {
       const settings = await getSettings();
@@ -506,10 +506,13 @@ chrome.runtime.onConnect.addListener((port) => {
       const key = taskKey(pageUrl);
       const task = await getTask(key);
       const results = await getMap<SolveResult>('results');
-      let result: SolveResult | null = results[tabId] ?? null;
+      const hash = fieldsHash(snaps);
+      // the answers the student sees in the panel come first (also ones opened from history),
+      // then this tab's last result, then the saved answers of this page
+      const saved = findPage(task, hash) ?? [...(task?.pages ?? [])].reverse().find((p) => p.url.split('#')[0] === pageUrl.split('#')[0]) ?? null;
+      let result: SolveResult | null = (req.result?.answers?.length ? req.result : null) ?? results[tabId] ?? saved?.result ?? null;
       let stories = collectStories(snaps, [], '');
       if (!stories.length && task?.stories.length) stories = task.stories;
-      const hash = fieldsHash(snaps);
 
       const reply = await chatWithClaude(
         settings,

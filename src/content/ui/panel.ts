@@ -364,7 +364,8 @@ export class Panel {
       this.chatPort = null;
       if (this.store.get().chatBusy) this.store.set({ chatBusy: false, chatLive: '' });
     });
-    port.postMessage({ messages: chat });
+    // the answers on screen go along, so "תקצר את תשובה 1" means the answer the student sees as 1
+    port.postMessage({ messages: chat, result: s.savedElsewhere ? null : s.result });
     send({ type: 'chat-save', chat }).catch(() => {});
   }
 

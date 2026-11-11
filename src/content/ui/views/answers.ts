@@ -1,3 +1,4 @@
+import { answerLabels, missingLabels, questionLabel } from '../../../shared/labels';
 import type { Answer, ReviewItem, SolveResult } from '../../../shared/types';
 import { btn, fmtDate, h, iconBtn, keys, plural } from '../dom';
 import { icon } from '../icons';
@@ -8,15 +9,7 @@ import type { Actions, Rendered } from './types';
 
 // ---------- question numbers ----------
 
-/**
- * "שאלה 3 · א" from what Claude wrote in `question` / `part` (it copies the page's own numbering),
- * or the row's position when the question has no number.
- */
-export function questionLabel(question: string, part: string, fallback: number): string {
-  const num = question.match(/\d{1,3}/)?.[0] ?? (/^[א-ת]['׳]?$/.test(question.trim()) ? question.trim() : String(fallback));
-  const p = part.trim().replace(/^סעיף\s*/, '');
-  return `שאלה ${num}${p && p.length <= 6 ? ` · ${p}` : ''}`;
-}
+export { questionLabel };
 
 const qbadge = (label: string) => h('span', { class: 'qbadge' }, label);
 
@@ -43,7 +36,7 @@ export function filterCounts(r: SolveResult, s: UIState): Record<Filter, number>
 
 // ---------- rows ----------
 
-function resultRow(ans: Answer, i: number, s: UIState, a: Actions): HTMLElement {
+function resultRow(ans: Answer, i: number, label: string, s: UIState, a: Actions): HTMLElement {
   const kind = answerKind(ans, s);
   const [chip, cls] = CHIP[kind];
   const open = s.openRow === i;
@@ -58,7 +51,7 @@ function resultRow(ans: Answer, i: number, s: UIState, a: Actions): HTMLElement 
       h(
         'span',
         { class: 'cmain' },
-        h('span', { class: 'qline' }, qbadge(questionLabel(ans.question, ans.part, i + 1)), ans.page ? h('span', { class: 'qpage' }, `עמוד ${ans.page}`) : null),
+        h('span', { class: 'qline' }, qbadge(label), ans.page ? h('span', { class: 'qpage' }, `עמוד ${ans.page}`) : null),
         h('span', { class: 'cq', title: q }, q),
         ans.option ? h('span', { class: 'cs' }, h('span', { class: 'hl' }, ans.option)) : h('span', { class: 'cs' }, ans.answer),
       ),
@@ -77,14 +70,14 @@ function resultRow(ans: Answer, i: number, s: UIState, a: Actions): HTMLElement 
   );
 }
 
-function missingRow(m: { field_id: string; context: string }, n: number, a: Actions): HTMLElement {
+function missingRow(m: { field_id: string; context: string }, label: string, a: Actions): HTMLElement {
   return h(
     'div',
     { class: 'item missing' },
     h(
       'div',
       { class: 'crow', style: 'cursor:default' },
-      h('span', { class: 'cmain' }, h('span', { class: 'qline' }, qbadge(`שאלה ${n}`)), h('span', { class: 'cq', title: m.context }, m.context.slice(0, 120)), h('span', { class: 'cs' }, 'לא נמצאה תשובה')),
+      h('span', { class: 'cmain' }, h('span', { class: 'qline' }, qbadge(label)), h('span', { class: 'cq', title: m.context }, m.context.slice(0, 120)), h('span', { class: 'cs' }, 'לא נמצאה תשובה')),
       btn('השלם', () => a.completeMissing(), { cls: 'sm' }),
       h('span', { class: 'chip bad' }, 'חסר'),
     ),
@@ -124,13 +117,15 @@ function answersList(s: UIState, a: Actions): Rendered {
   const r = s.result!;
   const counts = filterCounts(r, s);
   const answered = r.answers.length;
+  const labels = answerLabels(r.answers);
+  const mLabels = missingLabels(labels, r.missing?.length ?? 0);
   const rows: HTMLElement[] = [];
   r.answers.forEach((ans, i) => {
     const k = answerKind(ans, s);
-    if (s.filter === 'all' || (s.filter === 'filled' && k === 'filled') || (s.filter === 'unfilled' && k === 'unfilled')) rows.push(resultRow(ans, i, s, a));
+    if (s.filter === 'all' || (s.filter === 'filled' && k === 'filled') || (s.filter === 'unfilled' && k === 'unfilled')) rows.push(resultRow(ans, i, labels[i], s, a));
   });
   if (s.filter === 'all' || s.filter === 'missing') {
-    r.missing?.forEach((m, i) => rows.push(missingRow(m, answered + i + 1, a)));
+    r.missing?.forEach((m, i) => rows.push(missingRow(m, mLabels[i], a)));
   }
   const fillable = r.answers.some((x) => x.field_id);
   const failedDocs = (r.documents ?? []).filter((d) => !d.ok);
@@ -170,7 +165,7 @@ function answersList(s: UIState, a: Actions): Rendered {
 
 // ---------- check me ----------
 
-function reviewRow(item: ReviewItem, i: number, s: UIState, a: Actions): HTMLElement {
+function reviewRow(item: ReviewItem, i: number, label: string, s: UIState, a: Actions): HTMLElement {
   const open = s.openRow === i;
   const q = item.questionText || [item.question, item.part].filter(Boolean).join(' · ') || 'שאלה';
   const [chip, cls] = item.grade >= 85 ? ['מצוין', 'ok'] : item.grade >= 70 ? ['טוב', 'acc'] : ['לשפר', 'bad'];
@@ -184,7 +179,7 @@ function reviewRow(item: ReviewItem, i: number, s: UIState, a: Actions): HTMLEle
       h(
         'span',
         { class: 'cmain' },
-        h('span', { class: 'qline' }, qbadge(questionLabel(item.question, item.part, i + 1)), item.page ? h('span', { class: 'qpage' }, `עמוד ${item.page}`) : null),
+        h('span', { class: 'qline' }, qbadge(label), item.page ? h('span', { class: 'qpage' }, `עמוד ${item.page}`) : null),
         h('span', { class: 'cq', title: q }, q),
         h('span', { class: 'gbar', 'aria-label': `ציון ${item.grade}` }, h('i', {}, h('b', { style: `width:${item.grade}%` })), h('span', {}, String(item.grade))),
         item.studentAnswer ? h('span', { class: 'cs', title: item.studentAnswer }, `כתבת: ${item.studentAnswer}`) : null,
@@ -208,6 +203,7 @@ function gradesList(s: UIState, a: Actions): Rendered {
   const r = s.review!;
   const avg = r.items.length ? Math.round(r.items.reduce((n, i) => n + i.grade, 0) / r.items.length) : 0;
   const weak = r.items.filter((i) => i.grade < 70).length;
+  const reviewLabels = answerLabels(r.items);
   return {
     top: statsStrip(avg / 100, String(avg), [[String(r.items.length), 'נבדקו'], [String(avg), 'ממוצע'], [String(weak), 'לשפר', weak > 0], [shortCost(r.costUsd), 'עלות']], 'סיכום הבדיקה'),
     body: [
@@ -215,7 +211,7 @@ function gradesList(s: UIState, a: Actions): Rendered {
       errorBanner(s),
       h('div', { class: 'status' }, icon('check'), h('span', { class: 't' }, `הבדיקה מוכנה · ציון ממוצע ${avg} · ${plural(r.items.length, 'שאלה אחת', 'שאלות')}`)),
       r.overall ? h('div', { class: 'note' }, r.overall) : null,
-      r.items.length ? h('div', { class: 'list reviews' }, r.items.map((it, i) => reviewRow(it, i, s, a))) : h('div', { class: 'muted' }, 'לא נמצאו תשובות שלך לבדוק'),
+      r.items.length ? h('div', { class: 'list reviews' }, r.items.map((it, i) => reviewRow(it, i, reviewLabels[i], s, a))) : h('div', { class: 'muted' }, 'לא נמצאו תשובות שלך לבדוק'),
       sourcesList(r.sources),
     ],
   };

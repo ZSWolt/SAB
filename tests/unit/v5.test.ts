@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildChatContent, chatSystemPrompt } from '../../src/ai/prompt';
+import { answerLabels, missingLabels } from '../../src/shared/labels';
 import { filterCounts } from '../../src/content/ui/views/board';
 import { initialState } from '../../src/content/ui/store';
 import { DEFAULT_SETTINGS } from '../../src/shared/settings';
@@ -28,6 +29,22 @@ describe('dashboard filter counts', () => {
 });
 
 describe('chat content', () => {
+  it('numbers the current answers like the answers tab, and missing ones after them', () => {
+    const [first] = buildChatContent({ snaps: [snap], stories: [], result, previousPages: '' }, [{ role: 'user', text: 'תקצר את תשובה 2' }]);
+    const text = (first.content as { text?: string }[]).map((c) => c.text ?? '').join('\n');
+    const cur = JSON.parse(text.match(/<current_answers[^>]*>\n([\s\S]*?)\n<\/current_answers>/)![1]);
+    expect(cur.map((a: { label: string }) => a.label)).toEqual(['שאלה 1', 'שאלה 2', 'שאלה 3']);
+    expect(cur[1]).toMatchObject({ field_id: '0:f2', question: '2', answer: 'ב' });
+    expect(text).toContain('שאלה 4 (field_id 0:f9)');
+    expect(chatSystemPrompt(DEFAULT_SETTINGS)).toContain('label');
+  });
+
+  it('never gives two answers the same number', () => {
+    expect(answerLabels([{ question: 'שאלה 1', part: '' }, { question: 'שאלה 2', part: '' }, { question: 'שאלה 1', part: '' }])).toEqual(['שאלה 1', 'שאלה 2', 'שאלה 3']);
+    expect(answerLabels([{ question: '1', part: 'א' }, { question: '1', part: 'ב' }])).toEqual(['שאלה 1 · א', 'שאלה 1 · ב']);
+    expect(missingLabels(['שאלה 1', 'שאלה 2', 'שאלה 4'], 2)).toEqual(['שאלה 5', 'שאלה 6']);
+  });
+
   it('puts the page context first, cached, then the turns in order', () => {
     const msgs = buildChatContent({ snaps: [snap], stories: [{ title: 'סיפור', text: 'היה היה' }], result, previousPages: '' }, [
       { role: 'user', text: 'תקצר את תשובה 1' },

@@ -1,4 +1,5 @@
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
+import { answerLabels, missingLabels } from '../shared/labels';
 import type { Settings } from '../shared/settings';
 import type { ChatMessage, SolveResult, TaggedSnapshot } from '../shared/types';
 import type { BetaMessageParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
@@ -226,7 +227,8 @@ ${writingSection(settings)}
 ## איך לענות בשיחה
 - תענה קצר וענייני, כמו חבר טוב שמבין בחומר. בלי הקדמות.
 - "תסביר", "למה", "על מה הסיפור": תסביר בפשטות, עם דוגמה מהטקסט כשזה עוזר. אל תשנה תשובות.
-- בקשה לשנות תשובה (לקצר, להאריך, לנסח אחרת, לתרגם, לתקן, להשלים שאלה חסרה): תקרא לכלי update_answers עם התשובות החדשות בלבד, וכל אחת עם ה-field_id שלה מרשימת השדות (או null אם אין שדה). בטקסט תכתוב משפט אחד על מה שינית.
+- התשובות שכבר נפתרו נמצאות ב-current_answers, כל אחת עם label כמו שהתלמיד רואה אותה בלשונית התשובות ("שאלה 3"). כשהוא כותב "תשובה 3", "שאלה 3", "הראשונה" או "האחרונה", הוא מתכוון לפריט עם ה-label הזה או למיקום הזה ברשימה. אל תפתור מחדש ואל תשאל איזו תשובה: תתבסס על התשובה שכבר כתובה שם.
+- בקשה לשנות תשובה (לקצר, להאריך, לנסח אחרת, לתרגם, לתקן, להשלים שאלה חסרה): תקרא לכלי update_answers עם התשובות החדשות בלבד. כל אחת עם אותו field_id, אותו question ואותו part של התשובה המקורית מ-current_answers (או מרשימת השדות כשאין עדיין תשובה, או null אם אין שדה). בטקסט תכתוב משפט אחד על מה שינית, ותזכיר את מספר השאלה.
 - "כל התשובות": תעדכן את כולן בקריאה אחת.
 - שאלות עובדתיות: ${SOURCES}
 - אם התלמיד מבקש משהו שלא קשור למשימה, תעזור בקצרה.${extra(settings)}`;
@@ -251,14 +253,20 @@ function chatContextText(c: ChatContext): string {
     parts.push(`<fields>\n${fields.length ? JSON.stringify(fields, null, 1) : 'אין שדות בדף'}\n</fields>`);
   }
   if (c.result?.answers.length) {
-    const answers = c.result.answers.map((a) => ({
+    const labels = answerLabels(c.result.answers);
+    const answers = c.result.answers.map((a, i) => ({
+      label: labels[i],
       field_id: a.field_id,
-      question: a.questionText || [a.question, a.part].filter(Boolean).join(' '),
+      question: a.question,
+      part: a.part,
+      question_text: a.questionText || undefined,
+      ...(a.page ? { page: a.page } : {}),
       ...(a.option ? { option: a.option } : {}),
       answer: a.answer,
     }));
-    parts.push(`<current_answers note="התשובות שכבר נכתבו למשימה">\n${JSON.stringify(answers, null, 1)}\n</current_answers>`);
-    if (c.result.missing?.length) parts.push(`<missing note="שדות בלי תשובה">\n${c.result.missing.map((m) => `${m.field_id}: ${m.context}`).join('\n')}\n</missing>`);
+    parts.push(`<current_answers note="התשובות שכבר נכתבו למשימה, לפי הסדר בלשונית התשובות של התלמיד">\n${JSON.stringify(answers, null, 1)}\n</current_answers>`);
+    const mLabels = missingLabels(labels, c.result.missing?.length ?? 0);
+    if (c.result.missing?.length) parts.push(`<missing note="שדות בלי תשובה">\n${c.result.missing.map((m, i) => `${mLabels[i]} (field_id ${m.field_id}): ${m.context}`).join('\n')}\n</missing>`);
   } else {
     parts.push('<current_answers>עוד לא נפתרה המשימה</current_answers>');
   }

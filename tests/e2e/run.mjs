@@ -33,8 +33,12 @@ let skipIframeField = true;
 function mockChat(body) {
   const ctx = body.messages[0].content.map((c) => c.text ?? '').join('\n');
   const cur = ctx.match(/<current_answers[^>]*>\n([\s\S]*?)\n<\/current_answers>/);
-  const first = cur ? JSON.parse(cur[1])[0] : null;
-  const say = first ? 'קיצרתי את תשובה 1.' : 'הסיפור מספר על באדי.';
+  // like the model: "תשובה N" is the item labelled "שאלה N" in current_answers
+  const last = body.messages.at(-1);
+  const asked = (typeof last.content === 'string' ? last.content : last.content.map((c) => c.text ?? '').join(' ')).match(/תשובה (\d+)/)?.[1];
+  const list = cur ? JSON.parse(cur[1]) : [];
+  const first = asked ? list.find((a) => a.label === `שאלה ${asked}`) ?? null : null;
+  const say = first ? `קיצרתי את תשובה ${asked}.` : 'הסיפור מספר על באדי.';
   const events = [
     { type: 'message_start', message: { id: 'msg_c', type: 'message', role: 'assistant', model: body.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 500, output_tokens: 1 } } },
     { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
@@ -43,7 +47,7 @@ function mockChat(body) {
     { type: 'content_block_stop', index: 0 },
   ];
   if (first) {
-    const input = JSON.stringify({ answers: [{ question: 'שאלה 1', part: '', answer: 'תשובה קצרה מהשיחה', field_id: first.field_id, option: null }] });
+    const input = JSON.stringify({ answers: [{ question: first.question, part: first.part, answer: 'תשובה קצרה מהשיחה', field_id: first.field_id, option: null }] });
     events.push(
       { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'toolu_c', name: 'update_answers', input: {} } },
       { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: input } },
@@ -272,6 +276,8 @@ try {
   console.log('✓ undo fill');
 
   // chat tab: ask to shorten answer 1 → text streams in, an "updated" card, fill it, and the board shows it
+  // the panel sends the answers on screen with the chat, so it works even if the tab's stored result is gone
+  await sw.evaluate(async () => chrome.storage.session.set({ results: {} }));
   await page.click('#sab-helper-host >> .tabbar >> text=שיחה');
   await page.fill('#sab-helper-host >> .cbox textarea', 'תקצר את תשובה 1');
   await page.press('#sab-helper-host >> .cbox textarea', 'Enter');
@@ -279,6 +285,10 @@ try {
   const chatReq = requests.at(-1).body;
   assert.ok(chatReq.tools.some((t) => t.name === 'update_answers'));
   assert.deepEqual(chatReq.messages[0].content[0].cache_control, { type: 'ephemeral' }, 'chat context is cached');
+  const chatCtx = chatReq.messages[0].content.map((c) => c.text ?? '').join('\n');
+  const sent = JSON.parse(chatCtx.match(/<current_answers[^>]*>\n([\s\S]*?)\n<\/current_answers>/)[1]);
+  assert.deepEqual(sent.map((a) => a.label), ['שאלה 1', 'שאלה 2', 'שאלה 3'], 'answers numbered like the answers tab');
+  assert.equal(sent[0].answer, 'תשובה לבדיקה', 'the chat knows the answer already written');
   await page.waitForSelector('#sab-helper-host >> .upd >> text=תשובה קצרה מהשיחה');
   await shot(page, '6-chat');
   await page.click('#sab-helper-host >> .upd >> text=מלא בשדה');
