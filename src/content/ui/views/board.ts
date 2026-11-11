@@ -181,7 +181,7 @@ function scanCard(s: UIState, a: Actions): HTMLElement {
               )
             : h('div', { class: 'muted' }, s.scanning ? 'קורא את הדף' : 'לא זוהו שדות תשובה בדף. Claude יענה על השאלות שבטקסט, ואת התשובות אפשר להעתיק'),
           sc && sc.pages > 1 ? h('div', { class: 'muted' }, 'בפתרון אעבור על כל העמודים ואחזור לעמוד שלך') : null,
-          h('div', { class: 'tools', style: 'margin:0' }, btn('ייצא מבנה דף', () => a.exportStructure(), { cls: 'ghost sm', icon: 'download' })),
+          h('div', { class: 'tools', style: 'margin:0' }, btn('דוח אבחון', () => a.exportStructure(), { cls: 'ghost sm', icon: 'download' })),
         )
       : null,
   );

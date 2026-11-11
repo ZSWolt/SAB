@@ -2,6 +2,8 @@ import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/mes
 import { buildChatContent, buildContent, chatSystemPrompt, collectStories, reviewSystemPrompt, systemPrompt, type PdfBlock, type StoryBlock } from '../ai/prompt';
 import { chatWithClaude, reviewWithClaude, solveWithClaude, SolveError, testKey } from '../ai/claude';
 import { checkCoverage, enrich, mergeResults } from './coverage';
+import { currentFrames, inAllFrames } from './frames';
+import { nav, parseWalkId, walkTask } from './walk';
 import { fetchDocument } from './documents';
 import { addCost, deleteTask, fieldsHash, findPage, getTask, listTasks, previousPagesSummary, savePage, taskKey } from './tasks';
 import { testGeminiKey, watchVideoCached } from '../ai/gemini';
@@ -11,23 +13,26 @@ import type { ChatMessage, DocumentRef, FillItem, FillOutcome, FrameSnapshot, Po
 // ---------- frames ----------
 
 /** Runs one of the content-script functions in every frame of a tab and tags results by frame. */
-async function inAllFrames<T>(tabId: number, fn: string, args: unknown[] = [], frameIds?: number[]) {
-  const results = await chrome.scripting.executeScript({
-    target: frameIds ? { tabId, frameIds } : { tabId, allFrames: true },
-    func: (name: string, a: unknown[]) => {
-      const f = (globalThis as unknown as Record<string, (...x: unknown[]) => unknown>)[name];
-      return typeof f === 'function' ? f(...a) : null;
-    },
-    args: [fn, args],
-  });
-  return results
-    .filter((r) => r.result !== null && r.result !== undefined)
-    .map((r) => ({ frameId: r.frameId, result: r.result as T }));
-}
+/** Pictures of CET activities taken during the last walk of each tab, for the solve request. */
+const walkImages = new Map<number, { label: string; dataUrl: string }[]>();
 
 async function collect(tabId: number, allPages = true): Promise<TaggedSnapshot[]> {
+  if (allPages) {
+    // pages and section tabs: the background walks them and reads every frame on each (iframes too)
+    const settings = await getSettings();
+    const walked = await walkTask(tabId, {
+      capture: settings.activityShots !== false,
+      onStep: (label) => livePorts.get(tabId)?.({ type: 'step', id: 'pages', state: 'run', label: `קורא · ${label}` }),
+    }).catch(() => null);
+    if (walked) {
+      walkImages.set(tabId, walked.images);
+      await chrome.storage.session.set({ [`walk_${tabId}`]: { at: Date.now(), units: walked.units } }).catch(() => {});
+      return walked.snaps.filter((s) => s.fields.length || s.story || s.fullText.trim() || s.videos?.length || s.documents?.length);
+    }
+  }
+  walkImages.delete(tabId);
   try {
-    const res = await inAllFrames<FrameSnapshot>(tabId, '__sabExtract', [{ allPages }]);
+    const res = await inAllFrames<FrameSnapshot>(tabId, '__sabExtract', [{ allPages: false }]);
     return res
       .map(({ frameId, result }) => ({ ...result, frameId }))
       .filter((s) => s.fields.length || s.story || s.fullText.trim() || s.videos?.length || s.documents?.length)
@@ -142,6 +147,44 @@ chrome.runtime.onStartup.addListener(reloadIfUpdatedOnDisk);
 
 // ---------- one-shot messages from the panel ----------
 
+/**
+ * Fields found by the page/tab walk: go to their page and tab, find their frame again by its token
+ * (the site may have rebuilt the iframe) and fill them by position. Then back to where the student was.
+ */
+async function fillWalked(tabId: number, items: FillItem[]): Promise<FillOutcome[]> {
+  const out: FillOutcome[] = [];
+  const start = await nav(tabId, { op: 'outline' });
+  const units = new Map<string, { page: number; tab: number; list: (FillItem & { token: string; pos: number })[] }>();
+  for (const it of items) {
+    const w = parseWalkId(it.fieldId.slice(it.fieldId.indexOf(':') + 1))!;
+    const key = `${w.page}.${w.tab}`;
+    const u = units.get(key) ?? { page: w.page, tab: w.tab, list: [] };
+    u.list.push({ ...it, token: w.token, pos: w.pos });
+    units.set(key, u);
+  }
+  for (const u of [...units.values()].sort((a, b) => a.page - b.page || a.tab - b.tab)) {
+    await nav(tabId, { op: 'goto', page: start?.pages ? u.page : 0, tab: u.tab });
+    await new Promise((r) => setTimeout(r, 500));
+    const frames = await currentFrames(tabId);
+    const byToken = new Map([...frames].map(([id, token]) => [token, id]));
+    const groups = new Map<number, (FillItem & { pos: number })[]>();
+    for (const it of u.list) {
+      const frameId = byToken.get(it.token);
+      if (frameId === undefined) {
+        out.push({ fieldId: it.fieldId, ok: false, message: 'לא מצאתי את המקום של השדה בדף' });
+        continue;
+      }
+      groups.set(frameId, [...(groups.get(frameId) ?? []), { fieldId: it.fieldId, value: it.value, option: it.option, pos: it.pos }]);
+    }
+    for (const [frameId, list] of groups) {
+      const res = await inAllFrames<FillOutcome[]>(tabId, '__sabFillAt', [list], [frameId]).catch(() => []);
+      out.push(...(res[0]?.result ?? list.map((i) => ({ fieldId: i.fieldId, ok: false, message: 'המסגרת לא זמינה' }))));
+    }
+  }
+  if (start) await nav(tabId, { op: 'goto', page: start.pages ? start.page : 0, tab: start.tab });
+  return out;
+}
+
 function groupByFrame(items: FillItem[]) {
   const byFrame = new Map<number, FillItem[]>();
   for (const it of items) {
@@ -175,8 +218,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return { snapshots: await collect(tabId, false), opener: opener !== null ? await collect(opener, false) : [] };
       }
       case 'fill': {
-        const out: FillOutcome[] = [];
-        for (const [frameId, items] of groupByFrame(msg.items as FillItem[])) {
+        const all = msg.items as FillItem[];
+        const walked = all.filter((i) => parseWalkId(i.fieldId.slice(i.fieldId.indexOf(':') + 1)));
+        const out: FillOutcome[] = walked.length ? await fillWalked(tabId, walked) : [];
+        for (const [frameId, items] of groupByFrame(all.filter((i) => !walked.includes(i)))) {
           const res = await inAllFrames<FillOutcome[]>(tabId, '__sabFill', [items], [frameId]).catch(() => []);
           const got = res[0]?.result ?? items.map((i) => ({ fieldId: i.fieldId, ok: false, message: 'המסגרת לא זמינה' }));
           out.push(...got.map((o) => ({ ...o, fieldId: `${frameId}:${o.fieldId}` })));
@@ -191,8 +236,26 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const res = await inAllFrames<string | null>(tabId, '__sabOpenStory').catch(() => []);
         return res.find((r) => r.result)?.result ?? null;
       }
-      case 'structure':
-        return (await inAllFrames<object>(tabId, '__sabStructure').catch(() => [])).map((r) => ({ frameId: r.frameId, ...r.result }));
+      case 'structure': {
+        // diagnostic report: the page outline, what the last walk read on each page/tab (no student
+        // answers), the last answers' numbering and what was marked missing, and the DOM outline
+        const frames = (await inAllFrames<object>(tabId, '__sabStructure').catch(() => [])).map((r) => ({ frameId: r.frameId, ...r.result }));
+        const walk = (await chrome.storage.session.get(`walk_${tabId}`))[`walk_${tabId}`] ?? null;
+        const last = (await getMap<SolveResult>('results'))[tabId] ?? null;
+        return {
+          report: 'sab-diagnostics',
+          version: chrome.runtime.getManifest().version,
+          outline: await nav(tabId, { op: 'outline' }),
+          walk,
+          lastResult: last
+            ? {
+                answers: last.answers.map((a) => ({ question: a.question, part: a.part, how: a.how ?? null, field_id: a.field_id, page: a.page, section: a.section, length: a.answer.length })),
+                missing: last.missing ?? [],
+              }
+            : null,
+          frames,
+        };
+      }
       case 'walk-progress': {
         const p = msg as { page: number; total: number; waiting: boolean };
         livePorts.get(tabId)?.({
@@ -408,6 +471,7 @@ chrome.runtime.onConnect.addListener((port) => {
         previousPages: req.mode === 'solve' ? previousPagesSummary(task, hash) : '',
         onlyFields: req.onlyFields,
         screenshot: req.screenshot,
+        images: walkImages.get(tabId) ?? [],
       });
       let searches = 0;
       const callbacks = {

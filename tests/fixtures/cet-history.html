@@ -26,13 +26,13 @@
     const tabView = {
       1: '<p>קראו את המקורות בלשונית "מפת מקורות", השוו ביניהם וענו על השאלה.</p><h3>האם התקיימה או לא התקיימה הצבעה על הכרזת המדינה?</h3><p>בכתיבתכם תוכלו להתבסס על הטקסטים שלפניכם.</p>',
       2: '<h3>מקורות מידע</h3><p>בן גוריון בפתח ישיבת מנהלת העם: "אני מציע שנקבל החלטה בעניין ההכרזה על המדינה".</p><p>ההיסטוריונית אניטה שפירא: ההחלטה התקבלה ברוב של 6 נגד 4.</p><p>ההיסטוריון מרדכי נאור: לא נמצא פרוטוקול של הצבעה רשמית.</p><h4>רעיונות/טענות</h4><input type="text" placeholder="רעיון חדש"> <input type="text" placeholder="מקור חדש">',
-      3: '<div class="editor-toolbar"><select><option>Arial</option><option>David</option><option>Times New Roman</option></select><select><option>10</option><option>12</option><option>14</option><option>16</option></select><button>B</button></div><div id="ed" contenteditable="true" style="min-height:120px;border:1px solid #ccc"></div><aside><h4>צפייה במפת המקורות</h4><p>פרוטוקול ישיבת ערב במנהלת העם 12.5.1948</p></aside>',
+      3: '<div class="editor-toolbar"><select><option>Arial</option><option>David</option><option>Times New Roman</option></select><select><option>10</option><option>12</option><option>14</option><option>16</option></select><button>B</button></div><iframe id="edframe" style="width:600px;height:160px;border:1px solid #ccc"></iframe><aside><h4>צפייה במפת המקורות</h4><p>פרוטוקול ישיבת ערב במנהלת העם 12.5.1948</p></aside>',
       4: '<p>שלחו לחבר</p><input type="email" placeholder="מייל של חבר">',
     };
     const pageView = {
       1: '<h2>הדיון על הכרזת העצמאות</h2><p>בשיעור הזה נבדוק אם הייתה הצבעה על ההכרזה.</p>',
       2: '<h3>נרשם בפרוטוקול:</h3><p>לפניכם כמה מהמשתתפים שהועלו בדיון.</p><h3>שאלה 4 (32 נקודות)</h3><p>לפניכם כמה מטענות המשתתפים בדיון. קבעו אם הטענה תומכת בהכרזה או דוחה אותה.</p>' +
-        '<div class="card">ישראל גלילי: סכנת הפלישה של צבאות ערב מוקטנת<div class="drop"></div></div><div class="card">משה שרתוק: ב-15.5.1948 הבריטים עוזבים<div class="drop"></div></div><div class="card">👍</div><div class="card">👎</div>',
+        '<iframe id="genially" src="__GENIALLY__" style="width:500px;height:160px"></iframe><iframe id="drag" src="__DRAG__" style="width:500px;height:160px"></iframe>',
     };
     function renderTabs() {
       const wrap = document.getElementById('tabsWrap');
@@ -46,10 +46,15 @@
       setTimeout(() => {
         const main = document.getElementById('main');
         main.innerHTML = window.__page >= 3 ? tabView[window.__tab] : pageView[window.__page];
-        const ed = document.getElementById('ed');
-        if (ed) {
-          ed.textContent = window.__vals.essay ?? '';
-          ed.addEventListener('input', () => (window.__vals.essay = ed.textContent));
+        // the writing desk editor is an about:blank iframe with an editable body, like TinyMCE
+        const fr = document.getElementById('edframe');
+        if (fr) {
+          const d = fr.contentDocument;
+          d.open();
+          d.write('<!doctype html><html dir="rtl"><body contenteditable="true" style="min-height:120px"></body></html>');
+          d.close();
+          d.body.textContent = window.__vals.essay ?? '';
+          d.body.addEventListener('input', () => (window.__vals.essay = d.body.textContent));
         }
       }, 120);
     }

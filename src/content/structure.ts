@@ -40,7 +40,8 @@ export function pageStructure(doc: Document = document): object {
       .join(' ')
       .replace(/\s+/g, ' ')
       .trim();
-    if (own) n.txt = own.slice(0, 40);
+    // never what the student typed: no text from editable areas (editors, contenteditable)
+    if (own && !(el as HTMLElement).isContentEditable) n.txt = own.slice(0, 40);
     const kids = Array.from(el.children)
       .map((c) => walk(c, depth + 1))
       .filter((c): c is Node_ => !!c);

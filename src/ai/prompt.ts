@@ -115,6 +115,8 @@ export interface PromptInput {
   previousPages: string;
   onlyFields?: string[];
   screenshot?: string | null;
+  /** Pictures of activities taken while walking the task's pages/tabs (CET). */
+  images?: { label: string; dataUrl: string }[];
 }
 
 /** Story texts from the student, the page and the opener window, without duplicates. */
@@ -221,6 +223,12 @@ export function buildContent(input: PromptInput): BetaContentBlockParam[] {
     const [meta, data] = input.screenshot.split(',');
     content.push({ type: 'image', source: { type: 'base64', media_type: meta.includes('png') ? 'image/png' : 'image/jpeg', data } });
     content.push({ type: 'text', text: 'למעלה: צילום מסך של המשימה כפי שהיא נראית עכשיו.' });
+  }
+  for (const img of (input.images ?? []).slice(0, 6)) {
+    const [meta, data] = img.dataUrl.split(',');
+    if (!data) continue;
+    content.push({ type: 'image', source: { type: 'base64', media_type: meta.includes('png') ? 'image/png' : 'image/jpeg', data } });
+    content.push({ type: 'text', text: `למעלה: צילום של ${img.label}. כך הפעילות נראית לתלמיד (כרטיסים, דמויות, אגודלים): תשתמש בזה כדי לכתוב ב-how מה בדיוק לעשות.` });
   }
   content.push({ type: 'text', text: buildPageText(input) });
   return content;

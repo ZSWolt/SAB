@@ -120,7 +120,7 @@ export function notices(r: SolveResult, s: UIState, a: Actions): (HTMLElement | 
         'div',
         { class: 'banner warn' },
         h('div', { class: 'bt' }, icon('alert'), `בדף יש כנראה ${r.questionGap.markers} שאלות, ומצאתי רק ${r.questionGap.fields} שדות`),
-        h('div', { class: 'txt' }, 'Claude ענה גם על השאלות שבטקסט. את אלה שאין להן שדה צריך להעתיק. אם זה חוזר, "ייצא מבנה דף" יעזור לי לתקן'),
+        h('div', { class: 'txt' }, 'Claude ענה גם על השאלות שבטקסט. את אלה שאין להן שדה צריך להעתיק. אם זה חוזר, "דוח אבחון" (ב"מה זוהה בדף") יעזור לי לתקן'),
       ),
     );
   }
@@ -136,16 +136,26 @@ function answersList(s: UIState, a: Actions): Rendered {
   const counts = filterCounts(r, s);
   const answered = r.answers.length;
   // one list in question order; missing questions sit in their place, not at the end
-  const rows: HTMLElement[] = [];
+  // grouped by page / section tab when the task has them ("עמוד 3 · שולחן כתיבה")
+  const groups: { title: string; rows: HTMLElement[] }[] = [];
+  const push = (where: { page?: number; section?: string }, el: HTMLElement) => {
+    const title = [where.page ? `עמוד ${where.page}` : '', where.section ?? ''].filter(Boolean).join(' · ');
+    const last = groups[groups.length - 1];
+    if (last && last.title === title) last.rows.push(el);
+    else groups.push({ title, rows: [el] });
+  };
   for (const row of orderedRows(r.answers, r.missing ?? [])) {
     if (row.kind === 'missing') {
-      if (s.filter === 'all' || s.filter === 'missing') rows.push(missingRow(r.missing![row.index], row.label, a));
+      const m = r.missing![row.index];
+      if (s.filter === 'all' || s.filter === 'missing') push(m, missingRow(m, row.label, a));
       continue;
     }
     const ans = r.answers[row.index];
     const k = answerKind(ans, s);
-    if (s.filter === 'all' || (s.filter === 'filled' && k === 'filled') || (s.filter === 'unfilled' && k === 'unfilled')) rows.push(resultRow(ans, row.index, row.label, s, a));
+    if (s.filter === 'all' || (s.filter === 'filled' && k === 'filled') || (s.filter === 'unfilled' && k === 'unfilled')) push(ans, resultRow(ans, row.index, row.label, s, a));
   }
+  const grouped = groups.length > 1 || (groups.length === 1 && !!groups[0].title && groups[0].title.includes('·'));
+  const rows = groups.flatMap((g) => g.rows);
   const fillable = r.answers.some((x) => x.field_id);
   const failedDocs = (r.documents ?? []).filter((d) => !d.ok);
   const failedVideos = (r.videos ?? []).filter((v) => !v.ok);
@@ -162,7 +172,11 @@ function answersList(s: UIState, a: Actions): Rendered {
         { class: 'seg', role: 'group', 'aria-label': 'מסנן' },
         FILTERS.map(([id, label]) => h('button', { type: 'button', 'aria-pressed': String(s.filter === id), onclick: () => a.setFilter(id) }, label, ' ', h('span', { class: 'num', style: 'font-family:var(--mono)' }, String(counts[id])))),
       ),
-      rows.length ? h('div', { class: 'list answers' }, rows) : h('div', { class: 'muted' }, 'אין שאלות במסנן הזה'),
+      !rows.length
+        ? h('div', { class: 'muted' }, 'אין שאלות במסנן הזה')
+        : grouped
+          ? h('div', { class: 'answers grouped' }, groups.map((g) => h('div', { class: 'grp' }, h('div', { class: 'grp-t' }, g.title || 'בלי עמוד'), h('div', { class: 'list answers' }, g.rows))))
+          : h('div', { class: 'list answers' }, rows),
       r.notes ? h('div', { class: 'note' }, r.notes) : null,
       sourcesList(r.sources),
     ],

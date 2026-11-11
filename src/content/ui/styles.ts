@@ -228,6 +228,9 @@ textarea:focus, input:focus { outline: 2px solid var(--soft); border-color: var(
 .qmore .sec { white-space: pre-wrap; }
 .qmore.review { padding-right: 64px; }
 /* signature: the correct option marked with a highlighter */
+.answers.grouped { display: flex; flex-direction: column; gap: 12px; }
+.grp { display: flex; flex-direction: column; gap: 6px; }
+.grp-t { font-size: 12px; font-weight: 500; color: var(--text2); padding: 0 4px; }
 .item.ans { padding: 10px 12px 6px; }
 .item.ans .arow { display: flex; gap: 12px; }
 .item.ans .cmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }

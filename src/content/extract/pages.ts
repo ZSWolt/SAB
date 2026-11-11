@@ -381,3 +381,36 @@ async function walkAndFill(items: FillItem[], doc: Document): Promise<FillOutcom
   if (startTabHere) await goToSection(startTabHere, doc);
   return out;
 }
+
+// ---------- navigation for the background walk ----------
+// The background walks the pages and tabs itself, so it can read every frame (iframes too) on each
+// page/tab and fill fields inside iframes. The top frame only clicks.
+
+export interface NavOutline {
+  pages: number; // 0 = no page buttons
+  page: number;
+  tabs: string[] | null;
+  tab: number;
+  cet: boolean;
+}
+
+export function navOutline(doc: Document = document): NavOutline {
+  const pg = findPagination(doc);
+  const sec = findSectionTabs(doc);
+  return {
+    pages: pg?.buttons.length ?? 0,
+    page: pg?.current ?? 1,
+    tabs: sec?.labels ?? null,
+    tab: sec?.current ?? 0,
+    cet: /(^|\.)cet\.ac\.il$/.test(location.hostname) || !!doc.querySelector('meta[name="sab-section-tabs"]'),
+  };
+}
+
+/** Goes to page `page` (if there are page buttons) and then tab `tab` (if given), and waits. */
+export function navGoto(page: number, tab: number, doc: Document = document): Promise<NavOutline> {
+  return withLock(async () => {
+    if (page && findPagination(doc)) await goToPage(page, doc);
+    if (tab) await goToSection(tab, doc);
+    return navOutline(doc);
+  });
+}

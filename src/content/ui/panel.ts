@@ -540,13 +540,13 @@ export class Panel {
   }
 
   private async exportStructure() {
-    const data = await send<object[]>({ type: 'structure' });
+    const data = await send<object>({ type: 'structure' });
     const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `sab-structure-${location.hostname}.json`;
+    a.download = `sab-report-${location.hostname}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    this.toast('הקובץ ירד. אפשר לשלוח אותו כדי שאכוון את התוסף לאתר הזה');
+    this.toast('דוח האבחון ירד. שלח אותו, והוא יעזור לי לכוון את התוסף לאתר הזה (בלי התשובות שלך)');
   }
 }

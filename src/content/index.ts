@@ -1,8 +1,9 @@
 import type { FillItem } from '../shared/types';
 import { extractFrame } from './extract';
 import { tryOpenStoryBar } from './extract/story';
-import { undoFill } from './fill';
-import { extractAllPages, fillAcrossPages, onWalkProgress } from './extract/pages';
+import { fillFields, undoFill } from './fill';
+import { findFieldGroups } from './extract/fields';
+import { extractAllPages, fillAcrossPages, navGoto, navOutline, onWalkProgress } from './extract/pages';
 import { pageStructure } from './structure';
 import { Panel } from './ui/panel';
 
@@ -15,6 +16,27 @@ const api = {
   __sabUndo: () => undoFill(),
   __sabOpenStory: () => tryOpenStoryBar(),
   __sabStructure: () => pageStructure(),
+  // --- the background's page/tab walk (top frame answers; other frames return null) ---
+  __sabNav: (op: { op: 'outline' | 'goto' | 'hide' | 'show'; page?: number; tab?: number }) => {
+    if (window !== window.top) return null;
+    if (op.op === 'outline') return navOutline();
+    if (op.op === 'goto') return navGoto(op.page ?? 0, op.tab ?? 0);
+    const host = document.getElementById('sab-helper-host');
+    if (host) host.style.visibility = op.op === 'hide' ? 'hidden' : '';
+    return true;
+  },
+  /** This frame's address, so the background can find the same iframe again after it is rebuilt. */
+  __sabWhere: () => ({ url: location.href, top: window === window.top }),
+  /** Fills fields of this frame by their position among the page's field groups. */
+  __sabFillAt: (items: (FillItem & { pos: number })[]) => {
+    const groups = findFieldGroups();
+    return items.map((it) => {
+      const g = groups[it.pos];
+      if (!g) return { fieldId: it.fieldId, ok: false, message: 'השדה לא נמצא בדף' };
+      const [res] = fillFields([{ ...it, fieldId: g.id }]);
+      return { ...res, fieldId: it.fieldId };
+    });
+  },
 };
 Object.assign(globalThis, api);
 

@@ -130,11 +130,11 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/pdf' });
     return res.end('%PDF-1.4\n% fake story pdf for the test\n%%EOF');
   }
-  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html' }[url.pathname];
+  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
   if (!file) return res.writeHead(404).end();
   let html = readFileSync(resolve('tests/fixtures', file), 'utf8');
   // the iframe is served from another origin (127.0.0.1 vs localhost) to test cross-origin frames
-  html = html.replace('__FRAME__', `http://127.0.0.1:${port}/frame.html`);
+  html = html.replace('__FRAME__', `http://127.0.0.1:${port}/frame.html`).replace('__GENIALLY__', `http://127.0.0.1:${port}/genially.html`).replace('__DRAG__', `http://127.0.0.1:${port}/drag.html`);
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(html);
 });
 await new Promise((r) => server.listen(0, r));
@@ -383,7 +383,7 @@ try {
   const pagedText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
   for (const t of ['מה שם הגיבור', 'מי כתב את הסיפור', 'באיזו שנה נכתב', 'עמוד 3 מתוך 3']) assert.ok(pagedText.includes(t), t);
   const pagedFields = JSON.parse(pagedText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
-  assert.deepEqual(pagedFields.map((f) => [f.id.split(':')[1], f.page]), [['p1.0', 1], ['p2.0', 2], ['p3.0', 3]]);
+  assert.deepEqual(pagedFields.map((f) => [f.id.split(':').slice(1).join(':'), f.page]), [['w|p1.t0|top|0', 1], ['w|p2.t0|top|0', 2], ['w|p3.t0|top|0', 3]]);
   assert.equal(await page.evaluate(() => window.__cur), 2, 'back on the page the student was on');
   console.log('✓ paged task: read all 3 pages and went back to the page the student was on');
 
@@ -460,7 +460,7 @@ try {
   for (const t of ['מה הייתה מטרת הדיון', 'מקור א: פרוטוקול מועצת העם', 'האם הייתה הצבעה', 'מי קרא את ההכרזה', 'לשונית "מפת מקורות"']) assert.ok(tabsText.includes(t), t);
   assert.ok(!tabsText.includes('מייל של חבר'), 'the share tab is skipped');
   const tabFields = JSON.parse(tabsText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
-  assert.deepEqual(tabFields.map((f) => [f.id.split(':')[1], f.section]), [['p1.t1.0', 'המשימה'], ['p1.t3.0', 'שולחן כתיבה'], ['p1.t3.1', 'שולחן כתיבה']]);
+  assert.deepEqual(tabFields.map((f) => [f.id.split(':').slice(1).join(':'), f.section]), [['w|p1.t1|top|0', 'המשימה'], ['w|p1.t3|top|0', 'שולחן כתיבה'], ['w|p1.t3|top|1', 'שולחן כתיבה']]);
   assert.equal(await tabsPage.evaluate(() => window.__tab), 3, 'back on the tab the student was on');
   await tabsPage.waitForSelector('#sab-helper-host >> .answers .qpage >> text=שולחן כתיבה');
   console.log('✓ CET section tabs: read every tab (not "שיתוף") and went back to the writing desk');
@@ -479,15 +479,17 @@ try {
   await hist.evaluate(() => document.querySelector('#pager span[data-p="3"]').click());
   await hist.waitForFunction(() => window.__page === 3 && document.querySelector('a[data-t="3"]'));
   await hist.click('a[data-t="3"]');
-  await hist.waitForFunction(() => window.__tab === 3 && document.querySelector('#ed'));
+  await hist.waitForFunction(() => window.__tab === 3 && document.querySelector('#edframe'));
   await hist.keyboard.press('Alt+Shift+A');
   await hist.waitForSelector('#sab-helper-host >> .rl >> text=1/1', { timeout: 40000 });
   const histText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
   const histFields = JSON.parse(histText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
-  assert.deepEqual(histFields.map((f) => [f.id.split(':')[1], f.kind, f.page, f.section]), [['p3.t3.0', 'richtext', 3, 'שולחן כתיבה']], `only the essay editor is a question: ${JSON.stringify(histFields)}`);
+  assert.deepEqual(histFields.map((f) => [f.id.split(':').slice(1).join(':').replace(/\|f[^|]+\|/, '|IFRAME|'), f.kind, f.page, f.section]), [['w|p3.t3|IFRAME|0', 'richtext', 3, 'שולחן כתיבה']], `only the essay editor is a question: ${JSON.stringify(histFields)}`);
   assert.ok(histFields[0].question_text.includes('האם התקיימה או לא התקיימה הצבעה'), 'the editor carries the task question');
-  for (const t of ['אניטה שפירא', 'שאלה 4 (32 נקודות)', 'ישראל גלילי', 'עמוד 3 מתוך 4 · לשונית "מפת מקורות"']) assert.ok(histText.includes(t), t);
-  assert.equal(histText.split('לשונית "שולחן כתיבה"').length - 1, 1, 'the writing desk on page 4 is the same one: read once');
+  for (const t of ['אניטה שפירא', 'שאלה 4 (32 נקודות)', 'עמוד 3 מתוך 4 · לשונית "מפת מקורות"', 'סכנת הפלישה של צבאות ערב מוקטנת בעיני הבריטים', 'אחה"ב מתנגדת להכרזה']) assert.ok(histText.includes(t), `read: ${t}`);
+  const histImages = requests.at(-1).body.messages[0].content.filter((c) => c.type === 'image');
+  assert.ok(histImages.length >= 1, 'pictures of the activities sent');
+  assert.equal(histText.split('לשונית "שולחן כתיבה" ===').length - 1, 1, 'the writing desk on page 4 is the same one: read once');
   assert.ok(!histText.includes('מייל של חבר'), 'share tab skipped');
   assert.deepEqual(await hist.evaluate(() => [window.__page, window.__tab]), [3, 3], 'back on page 3, writing desk');
   await hist.waitForSelector('#sab-helper-host >> .ahow >> text=להדביק בשולחן הכתיבה');
@@ -498,7 +500,17 @@ try {
   await hist.click('#sab-helper-host >> text=/מלא הכול בדף/');
   await hist.waitForFunction(() => window.__vals.essay === 'תשובה לבדיקה', null, { timeout: 20000 });
   await hist.waitForFunction(() => window.__page === 3 && window.__tab === 3);
-  console.log('✓ CET history: the essay is filled into the writing desk editor');
+  console.log('✓ CET history: the essay is filled into the writing desk editor (an iframe), after going back to its page and tab');
+  // diagnostic report
+  await hist.click('#sab-helper-host >> .tabbar >> text=לוח');
+  await hist.click('#sab-helper-host >> .scan-head');
+  const [dl] = await Promise.all([hist.waitForEvent('download'), hist.click('#sab-helper-host >> text=דוח אבחון')]);
+  const report = JSON.parse(readFileSync(await dl.path(), 'utf8'));
+  assert.equal(report.report, 'sab-diagnostics');
+  assert.ok(report.walk.units.length >= 5 && report.walk.units.some((u) => u.heading.includes('שולחן כתיבה')), 'walk units in the report');
+  assert.ok(report.lastResult.answers.length === 1 && report.outline.pages === 4, 'answers and outline in the report');
+  assert.ok(!JSON.stringify(report).includes('תשובה לבדיקה'), 'no answer text in the report');
+  console.log('✓ diagnostic report: outline, what was read on each page/tab, numbering, no answer text');
   await hist.close();
 
   // a long task on a site that isn't classe: no story is picked up, and the answers tab scrolls

@@ -11,6 +11,8 @@ export interface Settings {
   styleSample: string;
   /** Click through page buttons (1 2 3…) at the bottom of the task and read every page. */
   readAllPages: boolean;
+  /** CET: pictures of activities (cards, thumbs, protocols) go to Claude with the text. */
+  activityShots?: boolean;
   /** Look of the panel: auto = notebook in light mode, focus (dark) in dark mode. */
   theme: 'auto' | 'notebook' | 'focus' | 'school';
   /** Dev / tests only: point the SDK at another server. */
