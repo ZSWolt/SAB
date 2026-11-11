@@ -14,6 +14,8 @@ export interface FieldInfo {
   page?: number;
   /** The task's section tab the field is on (CET: "שולחן כתיבה"), when there are such tabs. */
   section?: string;
+  /** Position among all the page's field groups (findFieldGroups), used to find it again when filling. */
+  pos?: number;
 }
 
 export interface StoryInfo {
@@ -73,6 +75,8 @@ export interface Answer {
   field_id: string | null;
   /** For choice fields: the exact option label to pick. */
   option: string | null;
+  /** What to do on the page (drag this, paste there…), for activities without a text field. */
+  how?: string | null;
   /** Filled in by the extension from the page (not by Claude): the field's question and page. */
   questionText?: string;
   page?: number;

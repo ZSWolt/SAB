@@ -29,7 +29,12 @@ describe('fieldsHash', () => {
 });
 
 describe('coverage', () => {
-  const s = snap([{ id: 'f1', kind: 'text', context: 'א' }, { id: 'f2', kind: 'text', context: 'ב' }, { id: 'f3', kind: 'text', context: 'ג' }]);
+  const s = snap([
+    { id: 'f1', kind: 'text', context: 'שאלה 1: מי?' },
+    { id: 'f2', kind: 'text', context: 'שאלה 2: מתי?' },
+    { id: 'f3', kind: 'text', context: 'הסבר את המושג' },
+    { id: 'f4', kind: 'text', context: 'רעיון חדש' }, // a "+ idea" box: not a question, never "missing"
+  ]);
   it('finds missing and duplicate answers', () => {
     const r = result([
       { question: '1', part: '', answer: 'x', field_id: '0:f1', option: null },

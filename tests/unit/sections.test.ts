@@ -43,3 +43,22 @@ describe('CET section tabs', () => {
     expect(findSectionTabs()).toBeNull();
   });
 });
+
+import { firstQuestion, looksLikeQuestion } from '../../src/shared/questions';
+
+describe('what counts as a question', () => {
+  it('questions, task verbs and numbered questions', () => {
+    expect(looksLikeQuestion('מי כתב את הסיפור?')).toBe(true);
+    expect(looksLikeQuestion('שאלה 4 (32 נקודות)')).toBe(true);
+    expect(looksLikeQuestion('הסבירו את עמדת בן גוריון')).toBe(true);
+    expect(looksLikeQuestion('ונמקו את תשובתכם')).toBe(true);
+  });
+  it('source texts and input boxes are not', () => {
+    expect(looksLikeQuestion('רעיונות/טענות')).toBe(false); // "ענו" inside "טענות"
+    expect(looksLikeQuestion('ההיסטוריונית אניטה שפירא: ההחלטה התקבלה ברוב של 6 נגד 4')).toBe(false);
+    expect(looksLikeQuestion('')).toBe(false);
+  });
+  it('finds the task question in a text', () => {
+    expect(firstQuestion('קראו את המקורות. האם התקיימה או לא התקיימה הצבעה על הכרזת המדינה? בכתיבתכם…')).toBe('האם התקיימה או לא התקיימה הצבעה על הכרזת המדינה?');
+  });
+});

@@ -26,8 +26,18 @@ function nextId(): string {
   return `f${counter}`;
 }
 
+/** Editor toolbars (font, size, style pickers) are controls, not questions. */
+const TOOLBAR = '[role="toolbar"], [role="menubar"], [class*="toolbar" i], .tox-editor-header, .mce-container, .mce-toolbar, .cke_top, .ql-toolbar';
+
 function inIgnoredArea(el: Element): boolean {
-  return !!el.closest('[role="search"], nav, header[role="banner"], #sab-helper-host');
+  return !!el.closest(`[role="search"], nav, header[role="banner"], #sab-helper-host, ${TOOLBAR}`);
+}
+
+/** A select that picks a font, size or text style. */
+const FORMAT_OPTION = /^(\d{1,2}(\.\d)?\s*(px|pt|em)?|arial|times|david|courier|verdana|tahoma|helvetica|calibri|georgia|גופן|font|heading\s*\d?|כותרת\s*\d?|פסקה|paragraph|normal|רגיל|sans|serif)$/i;
+function isFormatPicker(labels: string[]): boolean {
+  const real = labels.filter(Boolean);
+  return real.length >= 3 && real.filter((l) => FORMAT_OPTION.test(l.trim())).length >= real.length * 0.6;
 }
 
 function existingId(els: Element[]): string | null {
@@ -111,12 +121,9 @@ export function findFieldGroups(doc: Document = document): FieldGroup[] {
     if (tag === 'SELECT') {
       const sel = el as HTMLSelectElement;
       if (sel.disabled || !isRendered(sel)) continue;
-      groups.push({
-        id: '',
-        kind: 'select',
-        elements: [sel],
-        optionLabels: Array.from(sel.options).map((o) => normalize(o.text)).filter(Boolean),
-      });
+      const optionLabels = Array.from(sel.options).map((o) => normalize(o.text)).filter(Boolean);
+      if (isFormatPicker(optionLabels)) continue;
+      groups.push({ id: '', kind: 'select', elements: [sel], optionLabels });
       continue;
     }
     if (role === 'radio' || role === 'checkbox') {
@@ -247,8 +254,8 @@ function currentValue(group: FieldGroup): string {
 }
 
 export function describeFields(groups: FieldGroup[]): FieldInfo[] {
-  return groups.map((g) => {
-    const info: FieldInfo = { id: g.id, kind: g.kind, context: fieldContext(g) };
+  return groups.map((g, pos) => {
+    const info: FieldInfo = { id: g.id, kind: g.kind, context: fieldContext(g), pos };
     if (g.optionLabels) info.options = g.optionLabels;
     const value = currentValue(g);
     if (value) info.value = value.slice(0, 500);

@@ -1,0 +1,64 @@
+<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="sab-section-tabs"><title>הדיון על הכרזת העצמאות</title>
+<style>
+  .tabsbar { background: #1f6fb5; padding: 8px 16px; }
+  .tabs { list-style: none; display: flex; gap: 24px; margin: 0; padding: 0; }
+  .tabs a { color: #fff; cursor: pointer; }
+  .tabs li.active a { color: #ffd84d; }
+  .pager { position: fixed; bottom: 0; left: 0; right: 0; background: #888; text-align: center; padding: 6px; }
+  .pager span { display: inline-block; width: 22px; height: 22px; border-radius: 11px; background: #334; color: #fff; margin: 0 4px; cursor: pointer; }
+  .pager span.active { background: #fff; color: #000; }
+  .card { display: inline-block; width: 120px; border: 1px solid #ccc; margin: 4px; padding: 4px; }
+  .drop { width: 30px; height: 30px; border: 1px dashed #999; }
+</style></head>
+<body>
+  <header class="hdr"><b>מטח</b> הדיון על הכרזת העצמאות – היתה או לא היתה הצבעה</header>
+  <div id="tabsWrap"></div>
+  <main id="main"></main>
+  <div class="pager" id="pager"><span data-p="1">1</span><span data-p="2">2</span><span data-p="3">3</span><span data-p="4">4</span></div>
+  <script>
+    // like the real site: pages at the bottom, section tabs on the activity pages; changing the page
+    // reopens the first tab; the editor's text lives in a store
+    window.__page = 1;
+    window.__tab = 1;
+    window.__vals = {};
+    window.__reads = 0;
+    const TABS = ['המשימה', 'מפת מקורות', 'שולחן כתיבה', 'שיתוף'];
+    const tabView = {
+      1: '<p>קראו את המקורות בלשונית "מפת מקורות", השוו ביניהם וענו על השאלה.</p><h3>האם התקיימה או לא התקיימה הצבעה על הכרזת המדינה?</h3><p>בכתיבתכם תוכלו להתבסס על הטקסטים שלפניכם.</p>',
+      2: '<h3>מקורות מידע</h3><p>בן גוריון בפתח ישיבת מנהלת העם: "אני מציע שנקבל החלטה בעניין ההכרזה על המדינה".</p><p>ההיסטוריונית אניטה שפירא: ההחלטה התקבלה ברוב של 6 נגד 4.</p><p>ההיסטוריון מרדכי נאור: לא נמצא פרוטוקול של הצבעה רשמית.</p><h4>רעיונות/טענות</h4><input type="text" placeholder="רעיון חדש"> <input type="text" placeholder="מקור חדש">',
+      3: '<div class="editor-toolbar"><select><option>Arial</option><option>David</option><option>Times New Roman</option></select><select><option>10</option><option>12</option><option>14</option><option>16</option></select><button>B</button></div><div id="ed" contenteditable="true" style="min-height:120px;border:1px solid #ccc"></div><aside><h4>צפייה במפת המקורות</h4><p>פרוטוקול ישיבת ערב במנהלת העם 12.5.1948</p></aside>',
+      4: '<p>שלחו לחבר</p><input type="email" placeholder="מייל של חבר">',
+    };
+    const pageView = {
+      1: '<h2>הדיון על הכרזת העצמאות</h2><p>בשיעור הזה נבדוק אם הייתה הצבעה על ההכרזה.</p>',
+      2: '<h3>נרשם בפרוטוקול:</h3><p>לפניכם כמה מהמשתתפים שהועלו בדיון.</p><h3>שאלה 4 (32 נקודות)</h3><p>לפניכם כמה מטענות המשתתפים בדיון. קבעו אם הטענה תומכת בהכרזה או דוחה אותה.</p>' +
+        '<div class="card">ישראל גלילי: סכנת הפלישה של צבאות ערב מוקטנת<div class="drop"></div></div><div class="card">משה שרתוק: ב-15.5.1948 הבריטים עוזבים<div class="drop"></div></div><div class="card">👍</div><div class="card">👎</div>',
+    };
+    function renderTabs() {
+      const wrap = document.getElementById('tabsWrap');
+      wrap.innerHTML = window.__page >= 3
+        ? '<div class="tabsbar"><ul class="tabs" id="tabs">' + TABS.map((t, i) => '<li class="' + (i + 1 === window.__tab ? 'active' : '') + '"><a data-t="' + (i + 1) + '">' + t + '</a></li>').join('') + '</ul></div>'
+        : '';
+    }
+    function render() {
+      document.querySelectorAll('#pager span').forEach((s) => s.classList.toggle('active', Number(s.dataset.p) === window.__page));
+      renderTabs();
+      setTimeout(() => {
+        const main = document.getElementById('main');
+        main.innerHTML = window.__page >= 3 ? tabView[window.__tab] : pageView[window.__page];
+        const ed = document.getElementById('ed');
+        if (ed) {
+          ed.textContent = window.__vals.essay ?? '';
+          ed.addEventListener('input', () => (window.__vals.essay = ed.textContent));
+        }
+      }, 120);
+    }
+    document.addEventListener('click', (e) => {
+      const p = e.target.closest('#pager span');
+      if (p) { window.__page = Number(p.dataset.p); window.__tab = 1; render(); }
+      const t = e.target.closest('a[data-t]');
+      if (t) { window.__tab = Number(t.dataset.t); render(); }
+    });
+    render();
+  </script>
+</body></html>

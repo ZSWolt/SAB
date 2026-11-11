@@ -4,6 +4,7 @@ import { getText, isRendered } from '../text';
 import { extractFrame } from './index';
 import { findFieldGroups } from './fields';
 import { findSectionTabs } from './sections';
+import { firstQuestion, looksLikeQuestion } from '../../shared/questions';
 
 /**
  * Tasks split into pages with numbered buttons at the bottom (1 2 3 …). We click through every page,
@@ -217,77 +218,95 @@ export async function goToPage(page: number, doc: Document = document): Promise<
   return true;
 }
 
-function renumber(snap: FrameSnapshot, page: number, prefix = ''): FrameSnapshot {
-  return { ...snap, fields: snap.fields.map((f, i) => ({ ...f, id: `${prefix}p${page}.${i}`, page })) };
-}
-
-/** Reads every page of a paged task. Falls back to the current page only. */
+/** Reads every page of a paged task (and every section tab on each page). Falls back to the current page only. */
 export function extractAllPages(doc: Document = document): Promise<FrameSnapshot> {
   return withLock(() => walkAndRead(doc));
 }
 
-/** The pages (1 2 3 buttons) of what is on screen now; back to the page we started on. */
-async function readPages(doc: Document, prefix: string, forceIds: boolean): Promise<FrameSnapshot[]> {
-  const pg = findPagination(doc);
-  if (!pg) {
-    const snap = extractFrame(doc);
-    return [forceIds ? renumber(snap, 1, prefix) : snap];
-  }
-  const start = pg.current;
-  const per: FrameSnapshot[] = [];
-  for (let k = 1; k <= pg.buttons.length; k++) {
-    // always go (goToPage does nothing if we're already there): after page 1 we're no longer on `start`
-    if (!(await goToPage(k, doc))) break;
-    per.push(renumber(extractFrame(doc), k, prefix));
-  }
-  await goToPage(start, doc);
-  return per.length ? per : [extractFrame(doc)];
-}
-
 const uniq = <T>(list: T[], key: (x: T) => string) => [...new Map(list.map((x) => [key(x), x])).values()];
 
-function combine(per: FrameSnapshot[], heading: (s: FrameSnapshot, i: number) => string): FrameSnapshot {
-  const first = per[0];
+interface Unit {
+  snap: FrameSnapshot;
+  heading: string;
+}
+
+/** Same text and same fields = the same screen seen again (a writing desk shared by several pages). */
+const unitKey = (s: FrameSnapshot) => `${s.fullText.slice(0, 4000)}|${s.fields.map((f) => `${f.kind}:${f.context.slice(0, 80)}`).join('|')}`;
+
+/**
+ * A field on a tab without question text of its own (the big editor on CET's "שולחן כתיבה") gets
+ * the page's task question, from the tab that has it ("המשימה").
+ */
+function withTaskQuestion(snaps: FrameSnapshot[]): FrameSnapshot[] {
+  const q = snaps.map((s) => firstQuestion(s.fullText)).find(Boolean);
+  if (!q) return snaps;
+  return snaps.map((s) => ({
+    ...s,
+    fields: s.fields.map((f) => (!looksLikeQuestion(f.context) && (f.kind === 'richtext' || f.kind === 'textarea') ? { ...f, context: `שאלת המשימה: ${q}\n${f.context}`.trim() } : f)),
+  }));
+}
+
+async function walkAndRead(doc: Document): Promise<FrameSnapshot> {
+  const pg = findPagination(doc);
+  if (!pg && !findSectionTabs(doc)) return extractFrame(doc);
+
+  const startPage = pg?.current ?? 1;
+  // the tab the student has open (sites often reset it to the first tab when the page changes)
+  const startTab = findSectionTabs(doc)?.current ?? 0;
+  const total = pg?.buttons.length ?? 1;
+  const units: Unit[] = [];
+  const seen = new Set<string>();
+  for (let k = 1; k <= total; k++) {
+    // always go (goToPage does nothing if we're already there): after page 1 we're no longer on the start page
+    if (pg && !(await goToPage(k, doc))) break;
+    const sec = findSectionTabs(doc);
+    let here: { snap: FrameSnapshot; tab: number; label?: string }[] = [];
+    if (sec) {
+      // section tabs on this page (CET: המשימה | מפת מקורות | שולחן כתיבה): read each, then reopen the one that was open
+      const openTab = sec.current;
+      for (let t = 1; t <= sec.tabs.length; t++) {
+        if (!(await goToSection(t, doc))) continue;
+        here.push({ snap: extractFrame(doc), tab: t, label: sec.labels[t - 1] });
+      }
+      await goToSection(openTab, doc);
+      const fixed = withTaskQuestion(here.map((x) => x.snap));
+      here = here.map((x, i) => ({ ...x, snap: fixed[i] }));
+    } else {
+      here.push({ snap: extractFrame(doc), tab: 0 });
+    }
+    for (const { snap, tab, label } of here) {
+      const key = unitKey(snap);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const prefix = `p${k}${tab ? `.t${tab}` : ''}`;
+      units.push({
+        snap: {
+          ...snap,
+          fields: snap.fields.map((f, i) => ({ ...f, id: `${prefix}.${f.pos ?? i}`, ...(pg ? { page: k } : {}), ...(label ? { section: label } : {}) })),
+        },
+        heading: [pg ? `עמוד ${k} מתוך ${total}` : '', label ? `לשונית "${label}"` : ''].filter(Boolean).join(' · '),
+      });
+    }
+  }
+  if (pg) await goToPage(startPage, doc);
+  if (startTab) await goToSection(startTab, doc);
+  if (!units.length) return extractFrame(doc);
+  if (units.length === 1 && !units[0].snap.fields.some((f) => f.section)) return { ...units[0].snap, pages: total };
+
+  const per = units.map((u) => u.snap);
   return {
-    ...first,
+    ...per[0],
     fields: per.flatMap((s) => s.fields),
     story: per.find((s) => s.story)?.story,
-    fullText: per
-      .map((s, i) => `=== ${heading(s, i)} ===\n${s.fullText}`)
+    fullText: units
+      .map((u) => `=== ${u.heading} ===\n${u.snap.fullText}`)
       .join('\n\n')
       .slice(0, 150000),
     videos: uniq(per.flatMap((s) => s.videos), (v) => v.url),
     documents: uniq(per.flatMap((s) => s.documents), (d) => d.url),
-    pages: per.length,
+    pages: total,
     questionMarkers: per.reduce((n, s) => n + (s.questionMarkers ?? 0), 0),
   };
-}
-
-async function walkAndRead(doc: Document): Promise<FrameSnapshot> {
-  const sec = findSectionTabs(doc);
-  if (!sec) {
-    const per = await readPages(doc, '', false);
-    if (per.length <= 1) return per[0];
-    return combine(per, (_, i) => `עמוד ${i + 1} מתוך ${per.length}`);
-  }
-
-  // section tabs (CET: המשימה | מפת מקורות | שולחן כתיבה): every tab, and the pages inside each
-  const start = sec.current;
-  const per: FrameSnapshot[] = [];
-  const names: string[] = [];
-  for (let k = 1; k <= sec.tabs.length; k++) {
-    if (!(await goToSection(k, doc))) continue;
-    const pages = await readPages(doc, `t${k}.`, true);
-    pages.forEach((snap, p) => {
-      const name = pages.length > 1 ? `${sec.labels[k - 1]} · עמוד ${p + 1}` : sec.labels[k - 1];
-      const unit = per.length + 1;
-      per.push({ ...snap, fields: snap.fields.map((f) => ({ ...f, page: unit, section: name })) });
-      names.push(name);
-    });
-  }
-  await goToSection(start, doc);
-  if (!per.length) return extractFrame(doc);
-  return combine(per, (_, i) => `לשונית "${names[i]}" (${i + 1} מתוך ${per.length})`);
 }
 
 /** Clicks section tab `k` (finding the tabs again, they may be rebuilt) and waits for it to draw. */
@@ -298,70 +317,67 @@ export async function goToSection(k: number, doc: Document = document): Promise<
   const sec = findSectionTabs(doc);
   const tab = sec?.tabs[k - 1];
   if (!sec || !tab) return false;
-  report({ page: k, total: sec.tabs.length, waiting: false });
   if (sec.current === k) return true;
   tab.click();
   await settle(doc);
   return true;
 }
 
-/** Fills fields on several pages: goes to each page, finds its fields again by position, fills them. */
+/** Fills fields on several pages / tabs: goes to each, finds its fields again by position, fills them. */
 export function fillAcrossPages(items: FillItem[], doc: Document = document): Promise<FillOutcome[]> {
   return withLock(() => walkAndFill(items, doc));
 }
 
-const WALK_ID = /^(?:t(\d+)\.)?p(\d+)\.(\d+)$/;
+/** "p3.5" (page 3, field 5) or "p3.t2.0" (page 3, section tab 2, field 0). */
+const WALK_ID = /^p(\d+)(?:\.t(\d+))?\.(\d+)$/;
 
 async function walkAndFill(items: FillItem[], doc: Document): Promise<FillOutcome[]> {
   const walked = items.filter((i) => WALK_ID.test(i.fieldId));
   const out: FillOutcome[] = fillFields(items.filter((i) => !walked.includes(i)), doc);
   if (!walked.length) return out;
 
-  const startTab = findSectionTabs(doc)?.current ?? 0;
-  // group by tab, then by page
-  const byUnit = new Map<string, { tab: number; page: number; list: FillItem[] }>();
+  const pg = findPagination(doc);
+  const startPage = pg?.current ?? 1;
+  const startTabHere = findSectionTabs(doc)?.current ?? 0;
+  const byPage = new Map<number, Map<number, FillItem[]>>();
   for (const it of walked) {
-    const [, t, p] = it.fieldId.match(WALK_ID)!;
-    const tab = t ? Number(t) : 0;
+    const [, p, t] = it.fieldId.match(WALK_ID)!;
     const page = Number(p);
-    const key = `${tab}.${page}`;
-    const u = byUnit.get(key) ?? { tab, page, list: [] };
-    u.list.push(it);
-    byUnit.set(key, u);
+    const tab = t ? Number(t) : 0;
+    const tabs = byPage.get(page) ?? new Map<number, FillItem[]>();
+    tabs.set(tab, [...(tabs.get(tab) ?? []), it]);
+    byPage.set(page, tabs);
   }
-  const units = [...byUnit.values()].sort((a, b) => a.tab - b.tab || a.page - b.page);
-  let tabStartPage: number | null = null;
-  let curTab = -1;
-  for (const u of units) {
-    if (u.tab !== curTab) {
-      if (curTab > 0 && tabStartPage) await goToPage(tabStartPage, doc);
-      curTab = u.tab;
-      if (u.tab && !(await goToSection(u.tab, doc))) {
-        out.push(...u.list.map((i) => ({ fieldId: i.fieldId, ok: false, message: 'לא הצלחתי לעבור ללשונית של השאלה' })));
-        continue;
-      }
-      tabStartPage = findPagination(doc)?.current ?? null;
-    }
-    const pg = findPagination(doc);
-    const ok = pg ? await goToPage(u.page, doc) : u.page === 1;
-    if (!ok) {
-      out.push(...u.list.map((i) => ({ fieldId: i.fieldId, ok: false, message: `לא הצלחתי לעבור לעמוד ${u.page}` })));
+  for (const page of [...byPage.keys()].sort((a, b) => a - b)) {
+    const tabs = byPage.get(page)!;
+    const all = [...tabs.values()].flat();
+    const onPage = pg ? await goToPage(page, doc) : page === 1;
+    if (!onPage) {
+      out.push(...all.map((i) => ({ fieldId: i.fieldId, ok: false, message: `לא הצלחתי לעבור לעמוד ${page}` })));
       continue;
     }
-    const groups = findFieldGroups(doc);
-    for (const it of u.list) {
-      const idx = Number(it.fieldId.match(WALK_ID)![3]);
-      const g = groups[idx];
-      if (!g) {
-        out.push({ fieldId: it.fieldId, ok: false, message: `השדה לא נמצא בעמוד ${u.page}` });
+    const startTab = findSectionTabs(doc)?.current ?? 0;
+    for (const tab of [...tabs.keys()].sort((a, b) => a - b)) {
+      const list = tabs.get(tab)!;
+      if (tab && !(await goToSection(tab, doc))) {
+        out.push(...list.map((i) => ({ fieldId: i.fieldId, ok: false, message: 'לא הצלחתי לעבור ללשונית של השאלה' })));
         continue;
       }
-      const [res] = fillFields([{ ...it, fieldId: g.id }], doc);
-      out.push({ ...res, fieldId: it.fieldId });
+      const groups = findFieldGroups(doc);
+      for (const it of list) {
+        const g = groups[Number(it.fieldId.match(WALK_ID)![3])];
+        if (!g) {
+          out.push({ fieldId: it.fieldId, ok: false, message: `השדה לא נמצא בעמוד ${page}` });
+          continue;
+        }
+        const [res] = fillFields([{ ...it, fieldId: g.id }], doc);
+        out.push({ ...res, fieldId: it.fieldId });
+      }
+      await settle(doc, 200, 1500);
     }
-    await settle(doc, 200, 1500);
+    if (startTab) await goToSection(startTab, doc);
   }
-  if (tabStartPage) await goToPage(tabStartPage, doc);
-  if (startTab) await goToSection(startTab, doc);
+  if (pg) await goToPage(startPage, doc);
+  if (startTabHere) await goToSection(startTabHere, doc);
   return out;
 }

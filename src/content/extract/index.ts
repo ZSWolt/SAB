@@ -6,6 +6,7 @@ import { findVideos } from './videos';
 import { findDocuments } from './documents';
 import { findPagination } from './pages';
 import { isRendered } from '../text';
+import { looksLikeQuestion } from '../../shared/questions';
 
 const MAX_PAGE_TEXT = 60000;
 
@@ -53,7 +54,13 @@ export function isStorySite(doc: Document = document, loc: Location = location):
 export function extractFrame(doc: Document = document): FrameSnapshot {
   const isTop = window === window.top;
   const groups = findFieldGroups(doc);
-  const fields = describeFields(groups);
+  const adapter = detectAdapter();
+  let fields = describeFields(groups);
+  // CET pages are full of inputs that are not questions ("+ idea" boxes in the sources map…):
+  // keep the writing areas and the fields that sit next to a question
+  if (adapter === 'cet' || doc.querySelector('meta[name="sab-section-tabs"]')) {
+    fields = fields.filter((f) => f.kind === 'richtext' || f.kind === 'textarea' || looksLikeQuestion(f.context));
+  }
   const manual = (window as unknown as { __sabManualStory?: Element }).__sabManualStory;
   const found = manual && manual.isConnected
     ? { info: { text: getText(manual), source: 'manual' }, element: manual }
@@ -73,7 +80,7 @@ export function extractFrame(doc: Document = document): FrameSnapshot {
     url: location.href,
     title: doc.title,
     isTop,
-    adapter: detectAdapter(),
+    adapter,
     fields,
     story: found?.info,
     fullText: found?.element === doc.body ? '' : fullText,

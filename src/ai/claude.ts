@@ -34,10 +34,11 @@ const ANSWER_TOOL: BetaToolUnion = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['question', 'part', 'answer', 'field_id', 'option'],
+          required: ['question', 'part', 'how', 'answer', 'field_id', 'option'],
           properties: {
             question: { type: 'string', description: 'מספר/כותרת השאלה כמו בדף, למשל "שאלה 2".' },
             part: { type: 'string', description: 'הסעיף, למשל "א" – או מחרוזת ריקה.' },
+            how: { type: ['string', 'null'], description: 'מה לעשות בדף, 1–3 צעדים קצרים: בפעילות בלי שדה טקסט (גרירה, התאמה, לחיצה) – הפעולות המדויקות; בחיבור – איפה להדביק. null כשפשוט כותבים את התשובה בשדה שלה.' },
             answer: { type: 'string', description: 'התשובה המלאה, טקסט רגיל בלי markdown.' },
             field_id: { type: ['string', 'null'], description: 'id של השדה מרשימת fields, או null.' },
             option: { type: ['string', 'null'], description: 'בשאלות בחירה: הנוסח המדויק של האפשרות הנכונה. אחרת null.' },
@@ -117,10 +118,11 @@ const UPDATE_TOOL: BetaToolUnion = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['question', 'part', 'answer', 'field_id', 'option'],
+          required: ['question', 'part', 'how', 'answer', 'field_id', 'option'],
           properties: {
             question: { type: 'string' },
             part: { type: 'string' },
+            how: { type: ['string', 'null'] },
             answer: { type: 'string', description: 'התשובה החדשה, טקסט רגיל' },
             field_id: { type: ['string', 'null'] },
             option: { type: ['string', 'null'] },
@@ -145,6 +147,7 @@ function isAnswer(a: unknown): a is Answer {
     typeof x.answer === 'string' &&
     typeof x.question === 'string' &&
     typeof x.part === 'string' &&
+    (x.how === undefined || x.how === null || typeof x.how === 'string') &&
     (x.field_id === null || typeof x.field_id === 'string') &&
     (x.option === null || typeof x.option === 'string')
   );

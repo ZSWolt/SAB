@@ -74,6 +74,7 @@ function mockAnswer(body) {
   if (visible !== fields) skipIframeField = false;
   // like the model: number each answer as the page does ("שאלה 3"), not by its place in this reply
   const answers = visible.map((f, i) => ({
+    how: f.kind === 'richtext' ? 'להדביק בשולחן הכתיבה' : null,
     question: `שאלה ${(f.question_text ?? "").match(/שאלה (\d+)/)?.[1] ?? i + 1}`,
     part: '',
     answer: f.kind === 'radio' ? 'כי הוא כתב אותו' : f.kind === 'text' ? '1966' : 'תשובה לבדיקה',
@@ -129,7 +130,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/pdf' });
     return res.end('%PDF-1.4\n% fake story pdf for the test\n%%EOF');
   }
-  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html' }[url.pathname];
+  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html' }[url.pathname];
   if (!file) return res.writeHead(404).end();
   let html = readFileSync(resolve('tests/fixtures', file), 'utf8');
   // the iframe is served from another origin (127.0.0.1 vs localhost) to test cross-origin frames
@@ -459,7 +460,7 @@ try {
   for (const t of ['מה הייתה מטרת הדיון', 'מקור א: פרוטוקול מועצת העם', 'האם הייתה הצבעה', 'מי קרא את ההכרזה', 'לשונית "מפת מקורות"']) assert.ok(tabsText.includes(t), t);
   assert.ok(!tabsText.includes('מייל של חבר'), 'the share tab is skipped');
   const tabFields = JSON.parse(tabsText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
-  assert.deepEqual(tabFields.map((f) => [f.id.split(':')[1], f.section]), [['t1.p1.0', 'המשימה'], ['t3.p1.0', 'שולחן כתיבה'], ['t3.p1.1', 'שולחן כתיבה']]);
+  assert.deepEqual(tabFields.map((f) => [f.id.split(':')[1], f.section]), [['p1.t1.0', 'המשימה'], ['p1.t3.0', 'שולחן כתיבה'], ['p1.t3.1', 'שולחן כתיבה']]);
   assert.equal(await tabsPage.evaluate(() => window.__tab), 3, 'back on the tab the student was on');
   await tabsPage.waitForSelector('#sab-helper-host >> .answers .qpage >> text=שולחן כתיבה');
   console.log('✓ CET section tabs: read every tab (not "שיתוף") and went back to the writing desk');
@@ -469,6 +470,36 @@ try {
   await tabsPage.waitForFunction(() => window.__tab === 3);
   console.log('✓ CET section tabs: filled answers on every tab and returned to the writing desk');
   await tabsPage.close();
+
+  // CET history as in the real task: pages 1-4 at the bottom, tabs on pages 3-4, a writing desk
+  // with an editor toolbar, a sources map with "+ idea" boxes, and a drag activity without fields
+  const hist = await ctx.newPage();
+  await hist.goto(`http://localhost:${port}/cet-history.html`);
+  await hist.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await hist.evaluate(() => document.querySelector('#pager span[data-p="3"]').click());
+  await hist.waitForFunction(() => window.__page === 3 && document.querySelector('a[data-t="3"]'));
+  await hist.click('a[data-t="3"]');
+  await hist.waitForFunction(() => window.__tab === 3 && document.querySelector('#ed'));
+  await hist.keyboard.press('Alt+Shift+A');
+  await hist.waitForSelector('#sab-helper-host >> .rl >> text=1/1', { timeout: 40000 });
+  const histText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
+  const histFields = JSON.parse(histText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
+  assert.deepEqual(histFields.map((f) => [f.id.split(':')[1], f.kind, f.page, f.section]), [['p3.t3.0', 'richtext', 3, 'שולחן כתיבה']], `only the essay editor is a question: ${JSON.stringify(histFields)}`);
+  assert.ok(histFields[0].question_text.includes('האם התקיימה או לא התקיימה הצבעה'), 'the editor carries the task question');
+  for (const t of ['אניטה שפירא', 'שאלה 4 (32 נקודות)', 'ישראל גלילי', 'עמוד 3 מתוך 4 · לשונית "מפת מקורות"']) assert.ok(histText.includes(t), t);
+  assert.equal(histText.split('לשונית "שולחן כתיבה"').length - 1, 1, 'the writing desk on page 4 is the same one: read once');
+  assert.ok(!histText.includes('מייל של חבר'), 'share tab skipped');
+  assert.deepEqual(await hist.evaluate(() => [window.__page, window.__tab]), [3, 3], 'back on page 3, writing desk');
+  await hist.waitForSelector('#sab-helper-host >> .ahow >> text=להדביק בשולחן הכתיבה');
+  await hist.setViewportSize({ width: 1100, height: 760 });
+  await shot(hist, '9-cet-history');
+  assert.equal(await hist.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.chip.bad').length), 0, 'nothing marked missing');
+  console.log('✓ CET history: pages then tabs, only the real question (no toolbar / "+ idea" boxes), nothing missing, "מה לעשות" shown');
+  await hist.click('#sab-helper-host >> text=/מלא הכול בדף/');
+  await hist.waitForFunction(() => window.__vals.essay === 'תשובה לבדיקה', null, { timeout: 20000 });
+  await hist.waitForFunction(() => window.__page === 3 && window.__tab === 3);
+  console.log('✓ CET history: the essay is filled into the writing desk editor');
+  await hist.close();
 
   // a long task on a site that isn't classe: no story is picked up, and the answers tab scrolls
   const many = await ctx.newPage();

@@ -234,6 +234,10 @@ textarea:focus, input:focus { outline: 2px solid var(--soft); border-color: var(
 .item.ans .qline .chip { margin-inline-start: auto; }
 .item.ans .cq { font-size: 12px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .amark { font-size: 14px; line-height: 24px; color: var(--text); white-space: pre-wrap; }
+.amark.clamp { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.ahow { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; line-height: 20px; color: var(--text); background: var(--soft); border-radius: 8px; padding: 6px 8px; }
+.ahow svg { flex: none; margin-top: 3px; color: var(--sel); }
+.ahow b { font-weight: 500; }
 .abar { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
 .abar .spacer { flex: 1; }
 .abar .more { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--sel); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }

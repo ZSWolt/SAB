@@ -1,4 +1,5 @@
 import type { SolveResult, TaggedSnapshot } from '../shared/types';
+import { looksLikeQuestion } from '../shared/questions';
 
 /** Which fields got no answer, and which got more than one. */
 export function checkCoverage(snaps: TaggedSnapshot[], result: SolveResult, only?: string[]) {
@@ -7,8 +8,10 @@ export function checkCoverage(snaps: TaggedSnapshot[], result: SolveResult, only
   const wanted = only?.length ? new Set(only) : null;
   const missing = snaps.flatMap((s) =>
     s.fields
-      .map((f) => ({ field_id: `${s.frameId}:${f.id}`, context: f.context.replace(/\s+/g, ' ').slice(0, 200), ...(f.page ? { page: f.page } : {}), ...(f.section ? { section: f.section } : {}) }))
-      .filter((f) => (!wanted || wanted.has(f.field_id)) && !counts.has(f.field_id)),
+      .map((f) => ({ kind: f.kind, field_id: `${s.frameId}:${f.id}`, context: f.context.replace(/\s+/g, ' ').slice(0, 200), ...(f.page ? { page: f.page } : {}), ...(f.section ? { section: f.section } : {}) }))
+      // only real questions count as missing: an empty box without a question next to it is not one
+      .filter((f) => (!wanted || wanted.has(f.field_id)) && !counts.has(f.field_id) && (wanted || f.kind === 'richtext' || f.kind === 'textarea' || looksLikeQuestion(f.context)))
+      .map(({ kind: _kind, ...m }) => m),
   );
   const duplicates = [...counts.entries()].filter(([, n]) => n > 1).map(([id]) => id);
   return { missing, duplicates };

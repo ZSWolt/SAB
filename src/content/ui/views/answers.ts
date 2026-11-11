@@ -59,7 +59,9 @@ function resultRow(ans: Answer, i: number, label: string, s: UIState, a: Actions
         { class: 'cmain' },
         h('span', { class: 'qline' }, qbadge(label), where(ans), h('span', { class: `chip ${cls}` }, chip)),
         h('span', { class: 'cq', title: q }, q),
-        h('div', { class: 'amark' }, h('span', { class: 'hl' }, marked)),
+        ans.how ? h('div', { class: 'ahow' }, icon('pick', 14), h('span', {}, h('b', {}, 'מה לעשות: '), ans.how)) : null,
+        // a long answer (an essay) shows its start; "פירוט" opens all of it
+        h('div', { class: `amark${!open && marked.length > 320 ? ' clamp' : ''}` }, h('span', { class: 'hl' }, marked)),
       ),
     ),
     h(
