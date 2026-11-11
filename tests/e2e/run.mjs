@@ -129,7 +129,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/pdf' });
     return res.end('%PDF-1.4\n% fake story pdf for the test\n%%EOF');
   }
-  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html' }[url.pathname];
+  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html' }[url.pathname];
   if (!file) return res.writeHead(404).end();
   let html = readFileSync(resolve('tests/fixtures', file), 'utf8');
   // the iframe is served from another origin (127.0.0.1 vs localhost) to test cross-origin frames
@@ -446,6 +446,29 @@ try {
       await chrome.storage.local.set({ settings: { ...settings, theme: 'auto' } });
     });
   }
+
+  // CET history: section tabs at the top (המשימה | מפת מקורות | שולחן כתיבה | שיתוף), all read
+  const tabsPage = await ctx.newPage();
+  await tabsPage.goto(`http://localhost:${port}/tabs.html`);
+  await tabsPage.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await tabsPage.click('a[data-t="3"]'); // the student is on the writing desk
+  await tabsPage.waitForFunction(() => window.__tab === 3 && document.querySelector('#main h2')?.textContent === 'שולחן כתיבה');
+  await tabsPage.keyboard.press('Alt+Shift+A');
+  await tabsPage.waitForSelector('#sab-helper-host >> .rl >> text=3/3', { timeout: 30000 });
+  const tabsText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
+  for (const t of ['מה הייתה מטרת הדיון', 'מקור א: פרוטוקול מועצת העם', 'האם הייתה הצבעה', 'מי קרא את ההכרזה', 'לשונית "מפת מקורות"']) assert.ok(tabsText.includes(t), t);
+  assert.ok(!tabsText.includes('מייל של חבר'), 'the share tab is skipped');
+  const tabFields = JSON.parse(tabsText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
+  assert.deepEqual(tabFields.map((f) => [f.id.split(':')[1], f.section]), [['t1.p1.0', 'המשימה'], ['t3.p1.0', 'שולחן כתיבה'], ['t3.p1.1', 'שולחן כתיבה']]);
+  assert.equal(await tabsPage.evaluate(() => window.__tab), 3, 'back on the tab the student was on');
+  await tabsPage.waitForSelector('#sab-helper-host >> .answers .qpage >> text=שולחן כתיבה');
+  console.log('✓ CET section tabs: read every tab (not "שיתוף") and went back to the writing desk');
+  await tabsPage.click('#sab-helper-host >> text=/מלא הכול בדף/');
+  await tabsPage.waitForFunction(() => Object.keys(window.__vals).length === 3, null, { timeout: 20000 });
+  assert.deepEqual(await tabsPage.evaluate(() => window.__vals), { a: 'תשובה לבדיקה', b: 'תשובה לבדיקה', c: 'עגנון' });
+  await tabsPage.waitForFunction(() => window.__tab === 3);
+  console.log('✓ CET section tabs: filled answers on every tab and returned to the writing desk');
+  await tabsPage.close();
 
   // a long task on a site that isn't classe: no story is picked up, and the answers tab scrolls
   const many = await ctx.newPage();

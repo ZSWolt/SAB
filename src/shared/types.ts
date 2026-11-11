@@ -12,6 +12,8 @@ export interface FieldInfo {
   value?: string;
   /** Page number, when the task has page buttons (1, 2, 3…) and all pages were read. */
   page?: number;
+  /** The task's section tab the field is on (CET: "שולחן כתיבה"), when there are such tabs. */
+  section?: string;
 }
 
 export interface StoryInfo {
@@ -74,6 +76,7 @@ export interface Answer {
   /** Filled in by the extension from the page (not by Claude): the field's question and page. */
   questionText?: string;
   page?: number;
+  section?: string;
 }
 
 export interface Source {
@@ -92,7 +95,7 @@ export interface SolveResult {
   /** Documents (PDF / Google Docs) that were read, and ones that couldn't be. */
   documents?: { title: string; url: string; ok: boolean; message?: string }[];
   /** Fields on the page that got no answer. */
-  missing?: { field_id: string; context: string }[];
+  missing?: { field_id: string; context: string; page?: number; section?: string }[];
   /** Fields that got more than one answer. */
   duplicates?: string[];
   /** The story came from an earlier page of the same task. */
@@ -139,6 +142,7 @@ export interface ReviewItem {
   questionText?: string;
   studentAnswer?: string;
   page?: number;
+  section?: string;
 }
 
 export interface ReviewResult {

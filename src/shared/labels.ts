@@ -90,7 +90,7 @@ interface Keyed {
  */
 export function orderedRows(
   answers: { question: string; part: string; page?: number; field_id?: string | null }[],
-  missing: { field_id: string; context: string }[] = [],
+  missing: { field_id: string; context: string; page?: number }[] = [],
 ): OrderedRow[] {
   const keyed: Keyed[] = [];
   let lastNum = 0;
@@ -107,7 +107,7 @@ export function orderedRows(
   missing.forEach((m, i) => {
     const raw = m.context.match(MISSING_NUM)?.[1];
     const n = raw ? questionNumber(raw) : undefined;
-    keyed.push({ kind: 'missing', index: i, page: pageOf(undefined, m.field_id), num: n ?? Number.MAX_SAFE_INTEGER, part: '', pos: answers.length + i, question: raw ?? '', partText: '', explicit: n });
+    keyed.push({ kind: 'missing', index: i, page: pageOf(m.page, m.field_id), num: n ?? Number.MAX_SAFE_INTEGER, part: '', pos: answers.length + i, question: raw ?? '', partText: '', explicit: n });
   });
   keyed.sort((x, y) => x.page - y.page || x.num - y.num || (x.part < y.part ? -1 : x.part > y.part ? 1 : 0) || x.pos - y.pos);
 

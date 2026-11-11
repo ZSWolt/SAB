@@ -3,6 +3,7 @@ import { fillFields } from '../fill';
 import { getText, isRendered } from '../text';
 import { extractFrame } from './index';
 import { findFieldGroups } from './fields';
+import { findSectionTabs } from './sections';
 
 /**
  * Tasks split into pages with numbered buttons at the bottom (1 2 3 …). We click through every page,
@@ -216,8 +217,8 @@ export async function goToPage(page: number, doc: Document = document): Promise<
   return true;
 }
 
-function renumber(snap: FrameSnapshot, page: number): FrameSnapshot {
-  return { ...snap, fields: snap.fields.map((f, i) => ({ ...f, id: `p${page}.${i}`, page })) };
+function renumber(snap: FrameSnapshot, page: number, prefix = ''): FrameSnapshot {
+  return { ...snap, fields: snap.fields.map((f, i) => ({ ...f, id: `${prefix}p${page}.${i}`, page })) };
 }
 
 /** Reads every page of a paged task. Falls back to the current page only. */
@@ -225,28 +226,34 @@ export function extractAllPages(doc: Document = document): Promise<FrameSnapshot
   return withLock(() => walkAndRead(doc));
 }
 
-async function walkAndRead(doc: Document): Promise<FrameSnapshot> {
+/** The pages (1 2 3 buttons) of what is on screen now; back to the page we started on. */
+async function readPages(doc: Document, prefix: string, forceIds: boolean): Promise<FrameSnapshot[]> {
   const pg = findPagination(doc);
-  if (!pg) return extractFrame(doc);
+  if (!pg) {
+    const snap = extractFrame(doc);
+    return [forceIds ? renumber(snap, 1, prefix) : snap];
+  }
   const start = pg.current;
   const per: FrameSnapshot[] = [];
   for (let k = 1; k <= pg.buttons.length; k++) {
     // always go (goToPage does nothing if we're already there): after page 1 we're no longer on `start`
     if (!(await goToPage(k, doc))) break;
-    per.push(renumber(extractFrame(doc), k));
+    per.push(renumber(extractFrame(doc), k, prefix));
   }
   await goToPage(start, doc);
-  if (per.length <= 1) return per[0] ?? extractFrame(doc);
+  return per.length ? per : [extractFrame(doc)];
+}
 
+const uniq = <T>(list: T[], key: (x: T) => string) => [...new Map(list.map((x) => [key(x), x])).values()];
+
+function combine(per: FrameSnapshot[], heading: (s: FrameSnapshot, i: number) => string): FrameSnapshot {
   const first = per[0];
-  const story = per.find((s) => s.story)?.story;
-  const uniq = <T>(list: T[], key: (x: T) => string) => [...new Map(list.map((x) => [key(x), x])).values()];
   return {
     ...first,
     fields: per.flatMap((s) => s.fields),
-    story,
+    story: per.find((s) => s.story)?.story,
     fullText: per
-      .map((s, i) => `=== עמוד ${i + 1} מתוך ${per.length} ===\n${s.fullText}`)
+      .map((s, i) => `=== ${heading(s, i)} ===\n${s.fullText}`)
       .join('\n\n')
       .slice(0, 150000),
     videos: uniq(per.flatMap((s) => s.videos), (v) => v.url),
@@ -256,35 +263,97 @@ async function walkAndRead(doc: Document): Promise<FrameSnapshot> {
   };
 }
 
+async function walkAndRead(doc: Document): Promise<FrameSnapshot> {
+  const sec = findSectionTabs(doc);
+  if (!sec) {
+    const per = await readPages(doc, '', false);
+    if (per.length <= 1) return per[0];
+    return combine(per, (_, i) => `עמוד ${i + 1} מתוך ${per.length}`);
+  }
+
+  // section tabs (CET: המשימה | מפת מקורות | שולחן כתיבה): every tab, and the pages inside each
+  const start = sec.current;
+  const per: FrameSnapshot[] = [];
+  const names: string[] = [];
+  for (let k = 1; k <= sec.tabs.length; k++) {
+    if (!(await goToSection(k, doc))) continue;
+    const pages = await readPages(doc, `t${k}.`, true);
+    pages.forEach((snap, p) => {
+      const name = pages.length > 1 ? `${sec.labels[k - 1]} · עמוד ${p + 1}` : sec.labels[k - 1];
+      const unit = per.length + 1;
+      per.push({ ...snap, fields: snap.fields.map((f) => ({ ...f, page: unit, section: name })) });
+      names.push(name);
+    });
+  }
+  await goToSection(start, doc);
+  if (!per.length) return extractFrame(doc);
+  return combine(per, (_, i) => `לשונית "${names[i]}" (${i + 1} מתוך ${per.length})`);
+}
+
+/** Clicks section tab `k` (finding the tabs again, they may be rebuilt) and waits for it to draw. */
+export async function goToSection(k: number, doc: Document = document): Promise<boolean> {
+  const first = findSectionTabs(doc);
+  if (!first) return false;
+  await waitVisible(doc, () => report({ page: k, total: first.tabs.length, waiting: true }));
+  const sec = findSectionTabs(doc);
+  const tab = sec?.tabs[k - 1];
+  if (!sec || !tab) return false;
+  report({ page: k, total: sec.tabs.length, waiting: false });
+  if (sec.current === k) return true;
+  tab.click();
+  await settle(doc);
+  return true;
+}
+
 /** Fills fields on several pages: goes to each page, finds its fields again by position, fills them. */
 export function fillAcrossPages(items: FillItem[], doc: Document = document): Promise<FillOutcome[]> {
   return withLock(() => walkAndFill(items, doc));
 }
 
-async function walkAndFill(items: FillItem[], doc: Document): Promise<FillOutcome[]> {
-  const paged = items.filter((i) => /^p\d+\.\d+$/.test(i.fieldId));
-  const out: FillOutcome[] = fillFields(items.filter((i) => !paged.includes(i)), doc);
-  if (!paged.length) return out;
+const WALK_ID = /^(?:t(\d+)\.)?p(\d+)\.(\d+)$/;
 
-  const start = findPagination(doc)?.current ?? 1;
-  const byPage = new Map<number, FillItem[]>();
-  for (const it of paged) {
-    const page = Number(it.fieldId.slice(1).split('.')[0]);
-    byPage.set(page, [...(byPage.get(page) ?? []), it]);
+async function walkAndFill(items: FillItem[], doc: Document): Promise<FillOutcome[]> {
+  const walked = items.filter((i) => WALK_ID.test(i.fieldId));
+  const out: FillOutcome[] = fillFields(items.filter((i) => !walked.includes(i)), doc);
+  if (!walked.length) return out;
+
+  const startTab = findSectionTabs(doc)?.current ?? 0;
+  // group by tab, then by page
+  const byUnit = new Map<string, { tab: number; page: number; list: FillItem[] }>();
+  for (const it of walked) {
+    const [, t, p] = it.fieldId.match(WALK_ID)!;
+    const tab = t ? Number(t) : 0;
+    const page = Number(p);
+    const key = `${tab}.${page}`;
+    const u = byUnit.get(key) ?? { tab, page, list: [] };
+    u.list.push(it);
+    byUnit.set(key, u);
   }
-  for (const page of [...byPage.keys()].sort((a, b) => a - b)) {
-    const list = byPage.get(page)!;
-    const ok = await goToPage(page, doc);
+  const units = [...byUnit.values()].sort((a, b) => a.tab - b.tab || a.page - b.page);
+  let tabStartPage: number | null = null;
+  let curTab = -1;
+  for (const u of units) {
+    if (u.tab !== curTab) {
+      if (curTab > 0 && tabStartPage) await goToPage(tabStartPage, doc);
+      curTab = u.tab;
+      if (u.tab && !(await goToSection(u.tab, doc))) {
+        out.push(...u.list.map((i) => ({ fieldId: i.fieldId, ok: false, message: 'לא הצלחתי לעבור ללשונית של השאלה' })));
+        continue;
+      }
+      tabStartPage = findPagination(doc)?.current ?? null;
+    }
+    const pg = findPagination(doc);
+    const ok = pg ? await goToPage(u.page, doc) : u.page === 1;
     if (!ok) {
-      out.push(...list.map((i) => ({ fieldId: i.fieldId, ok: false, message: `לא הצלחתי לעבור לעמוד ${page}` })));
+      out.push(...u.list.map((i) => ({ fieldId: i.fieldId, ok: false, message: `לא הצלחתי לעבור לעמוד ${u.page}` })));
       continue;
     }
     const groups = findFieldGroups(doc);
-    for (const it of list) {
-      const idx = Number(it.fieldId.split('.')[1]);
+    for (const it of u.list) {
+      const idx = Number(it.fieldId.match(WALK_ID)![3]);
       const g = groups[idx];
       if (!g) {
-        out.push({ fieldId: it.fieldId, ok: false, message: `השדה לא נמצא בעמוד ${page}` });
+        out.push({ fieldId: it.fieldId, ok: false, message: `השדה לא נמצא בעמוד ${u.page}` });
         continue;
       }
       const [res] = fillFields([{ ...it, fieldId: g.id }], doc);
@@ -292,6 +361,7 @@ async function walkAndFill(items: FillItem[], doc: Document): Promise<FillOutcom
     }
     await settle(doc, 200, 1500);
   }
-  await goToPage(start, doc);
+  if (tabStartPage) await goToPage(tabStartPage, doc);
+  if (startTab) await goToSection(startTab, doc);
   return out;
 }

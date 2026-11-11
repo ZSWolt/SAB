@@ -12,6 +12,8 @@ import type { Actions, Rendered } from './types';
 export { questionLabel };
 
 const qbadge = (label: string) => h('span', { class: 'qbadge' }, label);
+/** Where the question is: its section tab (CET "שולחן כתיבה") or its page. */
+const where = (x: { page?: number; section?: string }) => (x.section || x.page ? h('span', { class: 'qpage' }, x.section ?? `עמוד ${x.page}`) : null);
 
 // ---------- answer status ----------
 
@@ -55,7 +57,7 @@ function resultRow(ans: Answer, i: number, label: string, s: UIState, a: Actions
       h(
         'div',
         { class: 'cmain' },
-        h('span', { class: 'qline' }, qbadge(label), ans.page ? h('span', { class: 'qpage' }, `עמוד ${ans.page}`) : null, h('span', { class: `chip ${cls}` }, chip)),
+        h('span', { class: 'qline' }, qbadge(label), where(ans), h('span', { class: `chip ${cls}` }, chip)),
         h('span', { class: 'cq', title: q }, q),
         h('div', { class: 'amark' }, h('span', { class: 'hl' }, marked)),
       ),
@@ -84,14 +86,14 @@ function resultRow(ans: Answer, i: number, label: string, s: UIState, a: Actions
   );
 }
 
-function missingRow(m: { field_id: string; context: string }, label: string, a: Actions): HTMLElement {
+function missingRow(m: { field_id: string; context: string; page?: number; section?: string }, label: string, a: Actions): HTMLElement {
   return h(
     'div',
     { class: 'item missing' },
     h(
       'div',
       { class: 'crow', style: 'cursor:default' },
-      h('span', { class: 'cmain' }, h('span', { class: 'qline' }, qbadge(label)), h('span', { class: 'cq', title: m.context }, m.context.slice(0, 120)), h('span', { class: 'cs' }, 'לא נמצאה תשובה')),
+      h('span', { class: 'cmain' }, h('span', { class: 'qline' }, qbadge(label), where(m)), h('span', { class: 'cq', title: m.context }, m.context.slice(0, 120)), h('span', { class: 'cs' }, 'לא נמצאה תשובה')),
       btn('השלם', () => a.completeMissing(), { cls: 'sm' }),
       h('span', { class: 'chip bad' }, 'חסר'),
     ),
@@ -194,7 +196,7 @@ function reviewRow(item: ReviewItem, i: number, label: string, s: UIState, a: Ac
       h(
         'span',
         { class: 'cmain' },
-        h('span', { class: 'qline' }, qbadge(label), item.page ? h('span', { class: 'qpage' }, `עמוד ${item.page}`) : null),
+        h('span', { class: 'qline' }, qbadge(label), where(item)),
         h('span', { class: 'cq', title: q }, q),
         h('span', { class: 'gbar', 'aria-label': `ציון ${item.grade}` }, h('i', {}, h('b', { style: `width:${item.grade}%` })), h('span', {}, String(item.grade))),
         item.studentAnswer ? h('span', { class: 'cs', title: item.studentAnswer }, `כתבת: ${item.studentAnswer}`) : null,

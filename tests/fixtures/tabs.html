@@ -1,0 +1,52 @@
+<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="sab-section-tabs"><title>הדיון על הכרזת העצמאות</title>
+<style>
+  .top { background: #1f6fb5; padding: 8px 16px; }
+  .tabs { list-style: none; display: flex; gap: 24px; margin: 0; padding: 0; }
+  .tabs a { color: #fff; cursor: pointer; }
+  .tabs li.active a { color: #ffd84d; }
+</style></head>
+<body>
+  <header class="hdr"><b>מטח</b> הדיון על הכרזת העצמאות – היתה או לא היתה הצבעה</header>
+  <div class="top"><ul class="tabs" id="tabs">
+    <li class="active"><a data-t="1">המשימה</a></li>
+    <li><a data-t="2">מפת מקורות</a></li>
+    <li><a data-t="3">שולחן כתיבה</a></li>
+    <li><a data-t="4">שיתוף</a></li>
+  </ul></div>
+  <main id="main"></main>
+  <script>
+    // like the real site: each tab rebuilds the content; answers live in a store, not in the DOM
+    window.__tab = 1;
+    window.__vals = {};
+    const views = {
+      1: () => '<h2>המשימה</h2><p>קראו את המקורות במפת המקורות וכתבו בשולחן הכתיבה.</p><div class="q"><p>שאלה 1: מה הייתה מטרת הדיון?</p><textarea data-k="a"></textarea></div>',
+      2: () => '<h2>מפת מקורות</h2><p>מקור א: פרוטוקול מועצת העם, 14 במאי 1948. בפרוטוקול לא מופיעה ספירת קולות.</p><p>מקור ב: עדות של חבר מועצה שזכר הצבעה פה אחד.</p>',
+      3: () => '<h2>שולחן כתיבה</h2><div class="q"><p>שאלה 2: האם הייתה הצבעה? נמקו לפי המקורות.</p><textarea data-k="b"></textarea></div>' +
+        '<fieldset><legend>שאלה 3: מי קרא את ההכרזה?</legend><label><input type="radio" name="r" value="ביאליק" data-k="c"> ביאליק</label><label><input type="radio" name="r" value="עגנון" data-k="c"> עגנון</label></fieldset>',
+      4: () => '<h2>שיתוף</h2><p>שלחו לחבר</p><input type="email" placeholder="מייל של חבר">',
+    };
+    function show(t) {
+      window.__tab = t;
+      document.querySelectorAll('#tabs li').forEach((li, i) => li.classList.toggle('active', i + 1 === t));
+      setTimeout(() => {
+        const main = document.getElementById('main');
+        main.innerHTML = views[t]();
+        main.querySelectorAll('[data-k]').forEach((el) => {
+          const k = el.dataset.k;
+          if (el.type === 'radio') {
+            el.checked = window.__vals[k] === el.value;
+            el.addEventListener('change', () => (window.__vals[k] = el.value));
+          } else {
+            el.value = window.__vals[k] ?? '';
+            el.addEventListener('input', () => (window.__vals[k] = el.value));
+          }
+        });
+      }, 120);
+    }
+    document.getElementById('tabs').addEventListener('click', (e) => {
+      const a = e.target.closest('a[data-t]');
+      if (a) show(Number(a.dataset.t));
+    });
+    show(1);
+  </script>
+</body></html>

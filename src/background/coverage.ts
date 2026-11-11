@@ -7,7 +7,7 @@ export function checkCoverage(snaps: TaggedSnapshot[], result: SolveResult, only
   const wanted = only?.length ? new Set(only) : null;
   const missing = snaps.flatMap((s) =>
     s.fields
-      .map((f) => ({ field_id: `${s.frameId}:${f.id}`, context: f.context.replace(/\s+/g, ' ').slice(0, 200) }))
+      .map((f) => ({ field_id: `${s.frameId}:${f.id}`, context: f.context.replace(/\s+/g, ' ').slice(0, 200), ...(f.page ? { page: f.page } : {}), ...(f.section ? { section: f.section } : {}) }))
       .filter((f) => (!wanted || wanted.has(f.field_id)) && !counts.has(f.field_id)),
   );
   const duplicates = [...counts.entries()].filter(([, n]) => n > 1).map(([id]) => id);
@@ -44,6 +44,6 @@ export function enrich<T extends { field_id: string | null }>(items: T[], snaps:
   return items.map((it) => {
     const f = it.field_id ? map.get(it.field_id) : undefined;
     if (!f) return it;
-    return { ...it, questionText: questionLine(f.context), page: f.page, ...(withValue && f.value ? { studentAnswer: f.value } : {}) };
+    return { ...it, questionText: questionLine(f.context), page: f.page, ...(f.section ? { section: f.section } : {}), ...(withValue && f.value ? { studentAnswer: f.value } : {}) };
   });
 }
