@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildChatContent, chatSystemPrompt } from '../../src/ai/prompt';
-import { answerLabels, missingLabels } from '../../src/shared/labels';
+import { answerLabels, missingLabels, orderedRows, questionNumber } from '../../src/shared/labels';
 import { filterCounts } from '../../src/content/ui/views/board';
 import { initialState } from '../../src/content/ui/store';
 import { DEFAULT_SETTINGS } from '../../src/shared/settings';
@@ -35,8 +35,32 @@ describe('chat content', () => {
     const cur = JSON.parse(text.match(/<current_answers[^>]*>\n([\s\S]*?)\n<\/current_answers>/)![1]);
     expect(cur.map((a: { label: string }) => a.label)).toEqual(['שאלה 1', 'שאלה 2', 'שאלה 3']);
     expect(cur[1]).toMatchObject({ field_id: '0:f2', question: '2', answer: 'ב' });
-    expect(text).toContain('שאלה 4 (field_id 0:f9)');
+    expect(text).toContain('שאלה 9 (field_id 0:f9)');
     expect(chatSystemPrompt(DEFAULT_SETTINGS)).toContain('label');
+  });
+
+  it('orders the answers tab by page, question number and part, with missing questions in place', () => {
+    const rows = orderedRows(
+      [
+        { question: 'שאלה 3', part: '' },
+        { question: 'שאלה 1', part: 'ב' },
+        { question: 'שאלה 1', part: 'א' },
+        { question: 'שאלה 1', part: '', page: 2 },
+        { question: '', part: '' },
+      ],
+      [{ field_id: '0:f2', context: 'שאלה 2: מי כתב?' }],
+    );
+    expect(rows.map((r) => `${r.kind}:${r.index}:${r.label}`)).toEqual([
+      'answer:2:שאלה 1 · א',
+      'answer:1:שאלה 1 · ב',
+      'missing:0:שאלה 2',
+      'answer:0:שאלה 3',
+      'answer:3:שאלה 5', // page 2 restarts at 1 → gets its place instead of a repeated label
+      'answer:4:שאלה 6', // no number: stays right after the row before it (on page 2)
+    ]);
+    expect(questionNumber('ב׳')).toBe(2);
+    expect(questionNumber('שאלה ד')).toBe(4);
+    expect(questionNumber('הסבר')).toBeUndefined();
   });
 
   it('never gives two answers the same number', () => {

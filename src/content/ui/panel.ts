@@ -3,6 +3,7 @@ import type { Answer, ChatMessage, FillOutcome, PortMessage, ReviewItem, SolveRe
 import { questionLine } from '../../background/coverage';
 import { PANEL_HOST_ID } from '../text';
 import { isStorySite } from '../extract';
+import { orderedRows } from '../../shared/labels';
 import { h, iconBtn, swap } from './dom';
 import { loadFonts } from './fonts';
 import { icon } from './icons';
@@ -428,7 +429,8 @@ export class Panel {
       copyAll: () => {
         const r = this.store.get().result;
         if (!r) return;
-        this.copy(r.answers.map((a) => `${a.questionText || [a.question, a.part].filter(Boolean).join(' ')}\n${a.option ? `${a.option}\n` : ''}${a.answer}`).join('\n\n'));
+        const inOrder = orderedRows(r.answers).map((row) => r.answers[row.index]);
+        this.copy(inOrder.map((a) => `${a.questionText || [a.question, a.part].filter(Boolean).join(' ')}\n${a.option ? `${a.option}\n` : ''}${a.answer}`).join('\n\n'));
       },
       completeMissing: () => {
         const r = this.store.get().result;

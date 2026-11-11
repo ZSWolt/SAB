@@ -1,5 +1,5 @@
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { answerLabels, missingLabels } from '../shared/labels';
+import { orderedRows } from '../shared/labels';
 import type { Settings } from '../shared/settings';
 import type { ChatMessage, SolveResult, TaggedSnapshot } from '../shared/types';
 import type { BetaMessageParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
@@ -253,9 +253,11 @@ function chatContextText(c: ChatContext): string {
     parts.push(`<fields>\n${fields.length ? JSON.stringify(fields, null, 1) : 'אין שדות בדף'}\n</fields>`);
   }
   if (c.result?.answers.length) {
-    const labels = answerLabels(c.result.answers);
-    const answers = c.result.answers.map((a, i) => ({
-      label: labels[i],
+    // same order and numbers as the student's answers tab
+    const order = orderedRows(c.result.answers, c.result.missing ?? []);
+    const missing = c.result.missing ?? [];
+    const answers = order.filter((row) => row.kind === 'answer').map(({ index, label }) => ({ label, a: c.result!.answers[index] })).map(({ label, a }) => ({
+      label,
       field_id: a.field_id,
       question: a.question,
       part: a.part,
@@ -265,8 +267,8 @@ function chatContextText(c: ChatContext): string {
       answer: a.answer,
     }));
     parts.push(`<current_answers note="התשובות שכבר נכתבו למשימה, לפי הסדר בלשונית התשובות של התלמיד">\n${JSON.stringify(answers, null, 1)}\n</current_answers>`);
-    const mLabels = missingLabels(labels, c.result.missing?.length ?? 0);
-    if (c.result.missing?.length) parts.push(`<missing note="שדות בלי תשובה">\n${c.result.missing.map((m, i) => `${mLabels[i]} (field_id ${m.field_id}): ${m.context}`).join('\n')}\n</missing>`);
+    const gaps = order.filter((row) => row.kind === 'missing');
+    if (gaps.length) parts.push(`<missing note="שדות בלי תשובה">\n${gaps.map(({ index, label }) => `${label} (field_id ${missing[index].field_id}): ${missing[index].context}`).join('\n')}\n</missing>`);
   } else {
     parts.push('<current_answers>עוד לא נפתרה המשימה</current_answers>');
   }

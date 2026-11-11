@@ -72,8 +72,9 @@ function mockAnswer(body) {
   const isOnly = text.includes('תענה **רק** עליהם');
   const visible = !isOnly && skipIframeField && fields.length === 3 ? fields.filter((f) => f.kind !== 'text') : fields;
   if (visible !== fields) skipIframeField = false;
+  // like the model: number each answer as the page does ("שאלה 3"), not by its place in this reply
   const answers = visible.map((f, i) => ({
-    question: `שאלה ${i + 1}`,
+    question: `שאלה ${(f.question_text ?? "").match(/שאלה (\d+)/)?.[1] ?? i + 1}`,
     part: '',
     answer: f.kind === 'radio' ? 'כי הוא כתב אותו' : f.kind === 'text' ? '1966' : 'תשובה לבדיקה',
     field_id: f.id,
@@ -244,6 +245,17 @@ try {
   assert.ok(onlyReq.includes('תענה **רק** עליהם'));
   assert.equal(JSON.parse(onlyReq.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]).length, 1);
   console.log('✓ missing-answer warning, and "complete the missing" answers only that field');
+  // the completed question 3 sits in its place, not at the end
+  const order = await page.evaluate(() => [...document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.answers .qbadge')].map((b) => b.textContent));
+  assert.deepEqual(order, ['שאלה 1', 'שאלה 2', 'שאלה 3'], `answers tab in question order: ${order}`);
+  // each answer shows marked; the explanation only after "פירוט"
+  const host = () => page.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelector('.list.answers').textContent);
+  assert.ok((await host()).includes('עגנון'), 'the chosen option is shown');
+  assert.ok(!(await host()).includes('כי הוא כתב אותו'), 'explanation hidden until "פירוט"');
+  await page.click('#sab-helper-host >> .answers .item >> nth=1 >> button.more');
+  await page.waitForSelector('#sab-helper-host >> .answers .qmore >> text=כי הוא כתב אותו');
+  await page.click('#sab-helper-host >> .answers .item >> nth=1 >> button.more');
+  console.log('✓ answers tab: sorted by question number, answers marked, explanation behind "פירוט"');
   const userText = req.body.messages[0].content.map((c) => c.text ?? '').join('\n');
   assert.ok(userText.includes('הכלה יצאה לצוד פרפרים'), 'story sent');
   const ws = req.body.tools.find((t) => t.type === 'web_search_20260209');
@@ -417,7 +429,7 @@ try {
       await page.waitForTimeout(150);
       await shot(page, `t-${theme}-1-board`);
       await page.click('#sab-helper-host >> .tabbar >> text=תשובות');
-      await page.click('#sab-helper-host >> .answers button.crow >> nth=1').catch(() => {});
+      await page.click('#sab-helper-host >> .answers button.more >> nth=1').catch(() => {});
       await shot(page, `t-${theme}-2-answers`);
       for (const [tab, name] of [['שיחה', '4-chat'], ['סיפור', '3-story'], ['היסטוריה', '3-history']]) {
         await page.click(`#sab-helper-host >> .tabbar >> text=${tab}`);

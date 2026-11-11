@@ -1,4 +1,4 @@
-import { answerLabels, missingLabels, questionLabel } from '../../../shared/labels';
+import { orderedRows, questionLabel } from '../../../shared/labels';
 import type { Answer, ReviewItem, SolveResult } from '../../../shared/types';
 import { btn, fmtDate, h, iconBtn, keys, plural } from '../dom';
 import { icon } from '../icons';
@@ -42,29 +42,43 @@ function resultRow(ans: Answer, i: number, label: string, s: UIState, a: Actions
   const open = s.openRow === i;
   const q = ans.questionText || [ans.question, ans.part].filter(Boolean).join(' · ') || 'תשובה';
   const fillMsg = ans.field_id ? s.filled[ans.field_id]?.message : undefined;
+  // the answer itself, marked: the chosen option in multiple choice, the text to write in an open question
+  const marked = ans.option ?? ans.answer;
+  // the explanation is shown only on "פירוט": the reason for a choice, or the full question for an open one
+  const detail = ans.option ? ans.answer : q !== marked ? q : '';
   return h(
     'div',
-    { class: 'item' },
+    { class: `item ans${open ? ' open' : ''}` },
     h(
-      'button',
-      { type: 'button', class: 'crow', 'aria-expanded': String(open), onclick: () => a.toggleRow(i) },
+      'div',
+      { class: 'arow' },
       h(
-        'span',
+        'div',
         { class: 'cmain' },
-        h('span', { class: 'qline' }, qbadge(label), ans.page ? h('span', { class: 'qpage' }, `עמוד ${ans.page}`) : null),
+        h('span', { class: 'qline' }, qbadge(label), ans.page ? h('span', { class: 'qpage' }, `עמוד ${ans.page}`) : null, h('span', { class: `chip ${cls}` }, chip)),
         h('span', { class: 'cq', title: q }, q),
-        ans.option ? h('span', { class: 'cs' }, h('span', { class: 'hl' }, ans.option)) : h('span', { class: 'cs' }, ans.answer),
+        h('div', { class: 'amark' }, h('span', { class: 'hl' }, marked)),
       ),
-      h('span', { class: `chip ${cls}` }, chip),
+    ),
+    h(
+      'div',
+      { class: 'abar' },
+      h(
+        'button',
+        { type: 'button', class: 'more', 'aria-expanded': String(open), onclick: () => a.toggleRow(i) },
+        open ? 'סגור פירוט' : 'פירוט',
+        icon('chevron', 14),
+      ),
+      h('span', { class: 'spacer' }),
+      ans.field_id ? btn('מלא', () => a.fill([ans]), { cls: 'ghost sm', icon: 'fill' }) : null,
+      btn('העתק', () => a.copy(marked), { cls: 'ghost sm', icon: 'copy' }),
     ),
     open
       ? h(
           'div',
           { class: 'qmore' },
-          ans.option ? h('div', { class: 'full' }, h('span', { class: 'hl' }, ans.option)) : null,
-          h('div', { class: ans.option ? 'sec' : 'full' }, ans.answer),
+          detail ? h('div', {}, h('div', { class: 'label' }, ans.option ? 'הסבר' : 'השאלה המלאה'), h('div', { class: 'sec' }, detail)) : h('div', { class: 'muted' }, 'אין הסבר נוסף לתשובה הזאת'),
           fillMsg ? h('div', { class: 'qstatus bad' }, fillMsg) : null,
-          h('div', { class: 'row' }, btn('העתק', () => a.copy(ans.option ?? ans.answer), { cls: 'sm', icon: 'copy' }), ans.field_id ? btn('מלא בשדה', () => a.fill([ans]), { cls: 'sm', icon: 'fill' }) : null),
         )
       : null,
   );
@@ -117,15 +131,16 @@ function answersList(s: UIState, a: Actions): Rendered {
   const r = s.result!;
   const counts = filterCounts(r, s);
   const answered = r.answers.length;
-  const labels = answerLabels(r.answers);
-  const mLabels = missingLabels(labels, r.missing?.length ?? 0);
+  // one list in question order; missing questions sit in their place, not at the end
   const rows: HTMLElement[] = [];
-  r.answers.forEach((ans, i) => {
+  for (const row of orderedRows(r.answers, r.missing ?? [])) {
+    if (row.kind === 'missing') {
+      if (s.filter === 'all' || s.filter === 'missing') rows.push(missingRow(r.missing![row.index], row.label, a));
+      continue;
+    }
+    const ans = r.answers[row.index];
     const k = answerKind(ans, s);
-    if (s.filter === 'all' || (s.filter === 'filled' && k === 'filled') || (s.filter === 'unfilled' && k === 'unfilled')) rows.push(resultRow(ans, i, labels[i], s, a));
-  });
-  if (s.filter === 'all' || s.filter === 'missing') {
-    r.missing?.forEach((m, i) => rows.push(missingRow(m, mLabels[i], a)));
+    if (s.filter === 'all' || (s.filter === 'filled' && k === 'filled') || (s.filter === 'unfilled' && k === 'unfilled')) rows.push(resultRow(ans, row.index, row.label, s, a));
   }
   const fillable = r.answers.some((x) => x.field_id);
   const failedDocs = (r.documents ?? []).filter((d) => !d.ok);
@@ -203,7 +218,7 @@ function gradesList(s: UIState, a: Actions): Rendered {
   const r = s.review!;
   const avg = r.items.length ? Math.round(r.items.reduce((n, i) => n + i.grade, 0) / r.items.length) : 0;
   const weak = r.items.filter((i) => i.grade < 70).length;
-  const reviewLabels = answerLabels(r.items);
+  const order = orderedRows(r.items);
   return {
     top: statsStrip(avg / 100, String(avg), [[String(r.items.length), 'נבדקו'], [String(avg), 'ממוצע'], [String(weak), 'לשפר', weak > 0], [shortCost(r.costUsd), 'עלות']], 'סיכום הבדיקה'),
     body: [
@@ -211,7 +226,7 @@ function gradesList(s: UIState, a: Actions): Rendered {
       errorBanner(s),
       h('div', { class: 'status' }, icon('check'), h('span', { class: 't' }, `הבדיקה מוכנה · ציון ממוצע ${avg} · ${plural(r.items.length, 'שאלה אחת', 'שאלות')}`)),
       r.overall ? h('div', { class: 'note' }, r.overall) : null,
-      r.items.length ? h('div', { class: 'list reviews' }, r.items.map((it, i) => reviewRow(it, i, reviewLabels[i], s, a))) : h('div', { class: 'muted' }, 'לא נמצאו תשובות שלך לבדוק'),
+      r.items.length ? h('div', { class: 'list reviews' }, order.map((row) => reviewRow(r.items[row.index], row.index, row.label, s, a))) : h('div', { class: 'muted' }, 'לא נמצאו תשובות שלך לבדוק'),
       sourcesList(r.sources),
     ],
   };

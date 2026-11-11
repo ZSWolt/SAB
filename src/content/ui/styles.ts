@@ -228,6 +228,19 @@ textarea:focus, input:focus { outline: 2px solid var(--soft); border-color: var(
 .qmore .sec { white-space: pre-wrap; }
 .qmore.review { padding-right: 64px; }
 /* signature: the correct option marked with a highlighter */
+.item.ans { padding: 10px 12px 6px; }
+.item.ans .arow { display: flex; gap: 12px; }
+.item.ans .cmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.item.ans .qline .chip { margin-inline-start: auto; }
+.item.ans .cq { font-size: 12px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.amark { font-size: 14px; line-height: 24px; color: var(--text); white-space: pre-wrap; }
+.abar { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.abar .spacer { flex: 1; }
+.abar .more { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--sel); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
+.abar .more:hover { background: var(--soft); }
+.abar .more svg { transition: transform 200ms var(--ease); }
+.item.ans.open .abar .more svg { transform: rotate(180deg); }
+.item.ans .qmore { padding: 4px 0 6px; }
 .hl { background: linear-gradient(transparent 40%, var(--hl) 40%, var(--hl) 94%, transparent 94%); padding: 0 4px; font-weight: 500; }
 /* moment: the grade circled in red pen */
 .grade { font-family: var(--mono); font-size: 14px; color: var(--pen); width: 40px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center;
