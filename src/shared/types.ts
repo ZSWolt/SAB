@@ -137,6 +137,16 @@ export interface FillOutcome {
   message?: string;
 }
 
+/** A file the student added as the story (Story tab). */
+export interface StoryFile {
+  name: string;
+  kind: 'text' | 'pdf' | 'image';
+  text?: string;
+  base64?: string;
+  mime?: string;
+  size: number;
+}
+
 export interface SolveRequest {
   mode: 'solve' | 'review';
   note: string;
@@ -148,6 +158,8 @@ export interface SolveRequest {
   force?: boolean;
   /** Answer only the fields the student hasn't filled yet. */
   onlyEmpty?: boolean;
+  /** Files the student added as the story. */
+  storyFiles?: StoryFile[];
   /** Set by the background: why only some fields are asked for. */
   onlyReason?: 'missing' | 'empty';
 }

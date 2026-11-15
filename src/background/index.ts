@@ -395,7 +395,7 @@ chrome.runtime.onConnect.addListener((port) => {
         req.onlyReason = 'empty';
       }
       // a note or "only empty" is a new request: never answer it with the saved answers
-      const solvedPage = req.mode === 'solve' && !req.force && !req.onlyFields?.length && !req.note.trim() ? findPage(task, hash) : null;
+      const solvedPage = req.mode === 'solve' && !req.force && !req.onlyFields?.length && !req.note.trim() && !req.storyFiles?.length ? findPage(task, hash) : null;
       if (solvedPage) {
         const results = await getMap<unknown>('results');
         results[tabId] = solvedPage.result;
@@ -407,11 +407,18 @@ chrome.runtime.onConnect.addListener((port) => {
       const hasText =
         snaps.some((s) => s.fullText.trim() || s.story || s.videos?.length || s.documents?.length) ||
         req.manualStory.trim() ||
+        req.storyFiles?.length ||
         req.screenshot;
       if (!hasText) throw new SolveError('לא הצלחתי לקרוא כלום מהדף. תרענן את הדף ותנסה שוב.');
 
       // --- story & documents: from this page, or remembered from an earlier page of the task ---
       let stories = collectStories(snaps, opener, req.manualStory);
+      // files the student added in the story tab: Word / text become story text; PDFs and pictures go as they are
+      const files = req.storyFiles ?? [];
+      const fileStories = files.filter((f) => f.kind === 'text' && f.text?.trim()).map((f) => ({ title: f.name.replace(/\.[^.]+$/, ''), text: f.text!.trim() }));
+      const filePdfs = files.filter((f) => f.kind === 'pdf' && f.base64).map((f) => ({ title: f.name, base64: f.base64! }));
+      const fileImages = files.filter((f) => f.kind === 'image' && f.base64).map((f) => ({ label: f.name, dataUrl: `data:${f.mime ?? 'image/jpeg'};base64,${f.base64}` }));
+      stories = [...fileStories.filter((f) => !stories.some((s) => s.text === f.text)), ...stories];
       let docRefs = uniqueDocs(snaps, opener, tabUrl);
       let storyFromMemory = false;
       if (!stories.length && !docRefs.length && task && (task.stories.length || task.documents.length)) {
@@ -435,7 +442,8 @@ chrome.runtime.onConnect.addListener((port) => {
       const docs = await readDocuments(docRefs, abort.signal, post);
       // Google Docs text joins the stories (keeps the cached block identical on later pages).
       const allStories = [...stories, ...docs.texts.filter((t) => !stories.some((s) => s.text === t.text))];
-      if (allStories.length || docs.pdfs.length) {
+      docs.pdfs.unshift(...filePdfs);
+      if (allStories.length || docs.pdfs.length || fileImages.length) {
         step('story', 'done', 'סיפור', storyFromMemory ? 'מעמוד קודם' : allStories[0]?.title?.slice(0, 40) || (docs.pdfs[0]?.title ?? ''));
       } else {
         step('story', 'skip', 'סיפור', docs.status.some((d) => !d.ok) ? 'המסמך לא נקרא' : 'לא נמצא');
@@ -481,6 +489,7 @@ chrome.runtime.onConnect.addListener((port) => {
         onlyReason: req.onlyReason ?? 'missing',
         screenshot: req.screenshot,
         images: walkImages.get(tabId) ?? [],
+        storyImages: fileImages,
       });
       let searches = 0;
       const callbacks = {

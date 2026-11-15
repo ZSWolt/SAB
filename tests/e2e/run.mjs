@@ -571,11 +571,27 @@ try {
   await many.waitForSelector('#sab-helper-host >> text=/זיהוי אוטומטי של סיפור פועל רק בספרות/');
   assert.equal(await many.isVisible('#sab-helper-host >> text=פתח את בר הסיפור'), false);
   console.log('✓ off classe: no automatic story, the story tab offers pick / paste');
+  // files as the story: Word, a photo of a page and a PDF
+  await many.setInputFiles('#sab-helper-host >> input[type=file]', [
+    { name: 'story.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: readFileSync('tests/fixtures/story.docx') },
+    { name: 'story-page.png', mimeType: 'image/png', buffer: readFileSync('tests/fixtures/story-page.png') },
+    { name: 'פרק ב.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n% chapter two\n%%EOF') },
+  ]);
+  await many.waitForSelector('#sab-helper-host >> .m.file >> text=story.docx');
+  await many.waitForSelector('#sab-helper-host >> .m.file >> text=story-page.png');
+  await many.waitForSelector('#sab-helper-host >> .m.file >> text=פרק ב.pdf');
+  await shot(many, '10-story-files');
+  console.log('✓ story tab: Word, picture and PDF added as story files');
   await many.click('#sab-helper-host >> .tabbar >> text=לוח');
   await many.click('#sab-helper-host >> .btn.primary.big');
   await many.waitForSelector('#sab-helper-host >> .rl >> text=15/15', { timeout: 20000 });
-  const manyStory = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
-  assert.ok(!manyStory.includes('<story'), 'no story sent off classe');
+  const manyContent = requests.at(-1).body.messages[0].content;
+  const manyStory = manyContent.map((c) => c.text ?? '').join('\n');
+  assert.ok(!manyStory.includes('סיפור שלא אמור להיקלט'), 'no automatic story off classe');
+  assert.ok(manyStory.includes('<story title="story">') && manyStory.includes('יואב נסע לבד אל הסבא שלו'), 'the Word file is sent as the story');
+  assert.ok(manyContent.some((c) => c.type === 'image'), 'the picture is sent');
+  assert.ok(manyContent.some((c) => c.type === 'document' && Buffer.from(c.source.data, 'base64').toString().includes('chapter two')), 'the PDF is sent');
+  console.log('✓ story files go to Claude: Word as text, the picture and the PDF as they are');
   await many.waitForSelector('#sab-helper-host >> .answers .qbadge >> text=שאלה 15');
   const scroll = await many.evaluate(async () => {
     const body = document.querySelector('#sab-helper-host').shadowRoot.querySelector('.body');

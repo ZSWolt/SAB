@@ -1,5 +1,5 @@
 import type { Settings } from '../../../shared/settings';
-import type { Answer, ReviewItem } from '../../../shared/types';
+import type { Answer, ReviewItem, StoryFile } from '../../../shared/types';
 import type { Kid } from '../dom';
 import type { AnswersMode, Filter, Sheet, Tab } from '../store';
 
@@ -27,6 +27,8 @@ export interface Actions {
   openOptions(): void;
   openStoryBar(): void;
   pickStory(): void;
+  addStoryFiles(files: FileList | File[]): void;
+  removeStoryFile(i: number): void;
   exportStructure(): void;
   openHistory(key: string): void;
   deleteHistory(key: string): void;
@@ -46,6 +48,8 @@ export interface Drafts {
   shot: boolean;
   /** Answer only the questions the student left empty. */
   onlyEmpty: boolean;
+  /** Files added in the story tab, sent as the story. */
+  storyFiles: StoryFile[];
   manualStory: string;
   chat: string;
 }

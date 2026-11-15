@@ -2,9 +2,61 @@ import type { Settings } from '../../../shared/settings';
 import { btn, fmtCost, fmtDate, h, iconBtn, keys, plural } from '../dom';
 import { icon } from '../icons';
 import type { UIState } from '../store';
+import { STORY_ACCEPT } from '../storyFiles';
 import type { Actions, Drafts, Rendered } from './types';
 
 export const SHEET_TITLES = { settings: 'הגדרות' } as const;
+
+const kb = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+
+/** "Add files": Word, PDF, text or a photo of the page, sent as the story with every solve on this page. */
+function storyFilesBox(a: Actions, d: Drafts): HTMLElement {
+  const input = h('input', { type: 'file', multiple: true, accept: STORY_ACCEPT, style: 'display:none', 'aria-label': 'קבצי סיפור' }) as HTMLInputElement;
+  input.addEventListener('change', () => {
+    if (input.files?.length) a.addStoryFiles(input.files);
+    input.value = '';
+  });
+  const drop = h(
+    'div',
+    { class: 'filedrop' },
+    input,
+    btn('הוסף קבצים', () => input.click(), { cls: '', icon: 'plus' }),
+    h('span', { class: 'muted' }, 'Word, PDF, טקסט או צילום של הדף. אפשר גם לגרור לכאן'),
+  );
+  drop.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    drop.classList.add('over');
+  });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('over');
+    if (e.dataTransfer?.files.length) a.addStoryFiles(e.dataTransfer.files);
+  });
+  return h(
+    'div',
+    { class: 'field' },
+    'קבצים של הסיפור',
+    drop,
+    d.storyFiles.length
+      ? h(
+          'div',
+          { class: 'files' },
+          d.storyFiles.map((f, i) =>
+            h(
+              'div',
+              { class: 'm file' },
+              icon(f.kind === 'image' ? 'camera' : 'file'),
+              h('span', { class: 't', title: f.name }, f.name),
+              h('span', { class: 'muted' }, f.kind === 'text' ? `${(f.text ?? '').length.toLocaleString()} תווים` : kb(f.size)),
+              iconBtn('trash', 'הסר', () => a.removeStoryFile(i), 'icon-btn sm'),
+            ),
+          ),
+        )
+      : null,
+    d.storyFiles.length ? h('div', { class: 'muted' }, 'הקבצים יישלחו ל-Claude כסיפור בכל פתרון בדף הזה') : null,
+  );
+}
 
 /** Story tab. The story is found automatically only in literature on classe; anywhere else it can be picked or pasted. */
 export function storyTab(s: UIState, a: Actions, d: Drafts): Rendered {
@@ -27,7 +79,7 @@ export function storyTab(s: UIState, a: Actions, d: Drafts): Rendered {
         ? h('article', { class: 'card story' }, story.title ? h('h2', {}, story.title) : null, story.text)
         : s.storySite
           ? h('div', { class: 'card story empty' }, s.scanning ? 'מחפש את הסיפור' : 'עוד לא זוהה סיפור. אפשר לפתוח את בר הסיפור, לבחור אותו בדף, או להדביק אותו למטה')
-          : h('div', { class: 'card story empty' }, 'זיהוי אוטומטי של סיפור פועל רק בספרות, ב-classe. כאן אפשר לבחור סיפור בדף או להדביק אותו למטה, והוא יישלח יחד עם השאלות'),
+          : h('div', { class: 'card story empty' }, 'זיהוי אוטומטי של סיפור פועל רק בספרות, ב-classe. כאן אפשר לבחור סיפור בדף, להוסיף קבצים או להדביק אותו למטה, והוא יישלח יחד עם השאלות'),
       h(
         'div',
         { class: 'tools' },
@@ -35,6 +87,7 @@ export function storyTab(s: UIState, a: Actions, d: Drafts): Rendered {
         btn('בחר את הסיפור בדף', () => a.pickStory(), { cls: 'ghost', icon: 'pick' }),
         btn('זהה מחדש', () => a.rescan(), { cls: 'ghost', icon: 'refresh' }),
       ),
+      storyFilesBox(a, d),
       h('label', { class: 'field' }, 'או הדבק את הסיפור', manual),
     ],
   };

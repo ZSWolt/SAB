@@ -122,6 +122,8 @@ export interface PromptInput {
   screenshot?: string | null;
   /** Pictures of activities taken while walking the task's pages/tabs (CET). */
   images?: { label: string; dataUrl: string }[];
+  /** Pictures the student added as the story (a photo of a page from the book). */
+  storyImages?: { label: string; dataUrl: string }[];
 }
 
 /** Story texts from the student, the page and the opener window, without duplicates. */
@@ -233,6 +235,13 @@ export function buildContent(input: PromptInput): BetaContentBlockParam[] {
     const [meta, data] = input.screenshot.split(',');
     content.push({ type: 'image', source: { type: 'base64', media_type: meta.includes('png') ? 'image/png' : 'image/jpeg', data } });
     content.push({ type: 'text', text: 'למעלה: צילום מסך של המשימה כפי שהיא נראית עכשיו.' });
+  }
+  for (const img of (input.storyImages ?? []).slice(0, 10)) {
+    const [meta, data] = img.dataUrl.split(',');
+    if (!data) continue;
+    const mt = /png/.test(meta) ? 'image/png' : /webp/.test(meta) ? 'image/webp' : /gif/.test(meta) ? 'image/gif' : 'image/jpeg';
+    content.push({ type: 'image', source: { type: 'base64', media_type: mt, data } });
+    content.push({ type: 'text', text: `למעלה: "${img.label}", תמונה של הסיפור (או חלק ממנו) שהתלמיד הוסיף. תקרא אותה ותתייחס אליה כמו לסיפור.` });
   }
   for (const img of (input.images ?? []).slice(0, 6)) {
     const [meta, data] = img.dataUrl.split(',');

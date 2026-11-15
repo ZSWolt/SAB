@@ -9,6 +9,7 @@ import { loadFonts } from './fonts';
 import { icon } from './icons';
 import { createStore, initialState, resolveTheme, upsertStep, type AnswersMode, type Filter, type ScanSummary, type Sheet, type Tab, type UIState } from './store';
 import { PANEL_CSS } from './styles';
+import { readStoryFile } from './storyFiles';
 import { answersView } from './views/answers';
 import { boardView } from './views/board';
 import { chatView } from './views/chat';
@@ -58,7 +59,7 @@ export class Panel {
   private chatPort: chrome.runtime.Port | null = null;
   private store = createStore({ ...initialState(), storySite: isStorySite() });
   private lastTab: Tab | null = null;
-  private drafts: Drafts = { note: '', shot: false, onlyEmpty: false, manualStory: '', chat: '' };
+  private drafts: Drafts = { note: '', shot: false, onlyEmpty: false, manualStory: '', storyFiles: [], chat: '' };
   private port: chrome.runtime.Port | null = null;
   private prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)');
   private scannedOnce = false;
@@ -300,7 +301,7 @@ export class Panel {
     });
     // "only what I haven't answered": the checkbox, or the same thing written in the note
     const onlyEmpty = mode === 'solve' && !extra.onlyFields && (this.drafts.onlyEmpty || wantsOnlyEmpty(this.drafts.note));
-    port.postMessage({ mode, note: this.drafts.note, manualStory: this.drafts.manualStory, screenshot, onlyEmpty, ...extra } satisfies SolveRequest);
+    port.postMessage({ mode, note: this.drafts.note, manualStory: this.drafts.manualStory, storyFiles: this.drafts.storyFiles, screenshot, onlyEmpty, ...extra } satisfies SolveRequest);
   }
 
   private onPortMessage(m: PortMessage) {
@@ -470,6 +471,23 @@ export class Panel {
         setTimeout(() => this.scan(), 1200);
       },
       pickStory: () => this.pickStory(),
+      addStoryFiles: async (files) => {
+        for (const f of Array.from(files)) {
+          try {
+            const read = await readStoryFile(f);
+            if (read.kind === 'text' && !read.text?.trim()) throw new Error(`${f.name}: לא נמצא בו טקסט`);
+            this.drafts.storyFiles = [...this.drafts.storyFiles.filter((x) => x.name !== read.name), read];
+            this.toast(`נוסף: ${f.name}`);
+          } catch (e) {
+            this.toast(e instanceof Error ? e.message : `לא הצלחתי לקרוא את ${f.name}`);
+          }
+        }
+        this.render();
+      },
+      removeStoryFile: (i) => {
+        this.drafts.storyFiles = this.drafts.storyFiles.filter((_, j) => j !== i);
+        this.render();
+      },
       exportStructure: () => this.exportStructure(),
       openHistory: async (key) => {
         const r = await send<{ result: SolveResult; at: number; url: string } | null>({ type: 'history-open', key }).catch(() => null);
