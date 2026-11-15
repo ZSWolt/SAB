@@ -1,0 +1,54 @@
+<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>תיאטרון ביוון העתיקה</title>
+<style>
+  .cols { display: flex; gap: 40px; } .col { display: flex; flex-direction: column; gap: 8px; }
+  .box { border: 1px solid #ccc; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  .box.sel { outline: 2px solid teal; }
+  .cat { padding: 8px; border: 1px solid #999; margin: 2px; cursor: pointer; }
+  mark { padding: 0; }
+</style></head>
+<body>
+  <section>
+    <p>מאפיינים רבים של התיאטרון היווני התפתחו בשל הצורך לפתור בעיות שונות שהיום אנו פותרים באמצעות טכנולוגיה. התאימו בין הבעיה לפתרון:</p>
+    <div class="cols">
+      <div class="col" id="problems">
+        <div class="box">אין תאורה</div><div class="box">אין הגברה</div><div class="box">יש רק שחקנים גברים</div>
+      </div>
+      <div class="col" id="solutions">
+        <div class="box">ההצגות מתקיימות במהלך היום</div><div class="box">השחקנים מגלמים גם דמויות של נשים</div><div class="box">השחקנים עומדים בקצה הבמה ומדברים ישירות לקהל</div>
+      </div>
+    </div>
+    <button>Send</button>
+  </section>
+  <section>
+    <p>לפניכם קטע מידע קצר על התיאטרון ביוון העתיקה. קראו את הטקסט וסמנו בתוכו את משפטי המפתח בעזרת מקרא הצבעים.</p>
+    <div><button class="cat" data-c="why">למה הציגו הצגות?</button><button class="cat" data-c="where">איפה ומתי?</button></div>
+    <div id="passage"><p>ביוון העתיקה התיאטרון לא היה בילוי או שעשוע של שעות הפנאי, אלא חלק מפולחן דתי. ניתן היה ללכת לתיאטרון אך ורק בזמן שנערכו החגיגות הללו. ההצגות התקיימו מהבוקר ועד הערב.</p></div>
+  </section>
+  <script>
+    // matching: click a problem, then its solution
+    window.__pairs = {};
+    let picked = null;
+    document.getElementById('problems').addEventListener('click', (e) => {
+      const b = e.target.closest('.box'); if (!b) return;
+      document.querySelectorAll('.box.sel').forEach((x) => x.classList.remove('sel'));
+      picked = b; b.classList.add('sel');
+    });
+    document.getElementById('solutions').addEventListener('click', (e) => {
+      const b = e.target.closest('.box'); if (!b || !picked) return;
+      window.__pairs[picked.textContent.trim()] = b.textContent.trim();
+      picked.classList.remove('sel'); picked = null;
+    });
+    // marking: choose a color, then select text in the passage
+    window.__marks = [];
+    let cat = null;
+    document.querySelectorAll('.cat').forEach((b) => b.addEventListener('click', () => (cat = b.dataset.c)));
+    document.getElementById('passage').addEventListener('mouseup', () => {
+      const sel = getSelection();
+      if (!cat || !sel || sel.isCollapsed) return;
+      window.__marks.push({ cat, text: sel.toString().trim() });
+      const m = document.createElement('mark'); m.dataset.cat = cat;
+      try { sel.getRangeAt(0).surroundContents(m); } catch {}
+      sel.removeAllRanges();
+    });
+  </script>
+</body></html>

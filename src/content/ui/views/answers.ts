@@ -1,5 +1,6 @@
 import { orderedRows, questionLabel } from '../../../shared/labels';
 import type { Answer, ReviewItem, SolveResult } from '../../../shared/types';
+import { activityKey, isActivity } from '../../../shared/types';
 import { btn, fmtDate, h, iconBtn, keys, plural } from '../dom';
 import { icon } from '../icons';
 import type { Filter, UIState } from '../store';
@@ -23,6 +24,7 @@ const where = (x: { page?: number; section?: string }) => {
 type RowKind = 'filled' | 'unfilled' | 'copy' | 'missing';
 
 function answerKind(a: Answer, s: UIState): RowKind {
+  if (!a.field_id && isActivity(a)) return s.filled[activityKey(a)]?.ok ? 'filled' : 'unfilled';
   if (!a.field_id) return 'copy';
   return s.filled[a.field_id]?.ok ? 'filled' : 'unfilled';
 }
@@ -64,7 +66,11 @@ function resultRow(ans: Answer, i: number, label: string, s: UIState, a: Actions
         h('span', { class: 'cq', title: q }, q),
         ans.how ? h('div', { class: 'ahow' }, icon('pick', 14), h('span', {}, h('b', {}, 'מה לעשות: '), ans.how)) : null,
         // a table question: the table itself, with the answers marked in their cells
-        ans.cells?.length
+        ans.matches?.length
+          ? matchTable(ans)
+          : ans.highlights?.length
+            ? highlightList(ans)
+            : ans.cells?.length
           ? cellsTable(ans)
           : // a long answer (an essay) shows its start; "פירוט" opens all of it
             h('div', { class: `amark${!open && marked.length > 320 ? ' clamp' : ''}` }, h('span', { class: 'hl' }, marked)),
@@ -80,7 +86,7 @@ function resultRow(ans: Answer, i: number, label: string, s: UIState, a: Actions
         icon('chevron', 14),
       ),
       h('span', { class: 'spacer' }),
-      ans.field_id ? btn('מלא', () => a.fill([ans]), { cls: 'ghost sm', icon: 'fill' }) : null,
+      ans.field_id || isActivity(ans) ? btn(isActivity(ans) && !ans.field_id ? 'בצע בדף' : 'מלא', () => a.fill([ans]), { cls: 'ghost sm', icon: 'fill' }) : null,
       btn('העתק', () => a.copy(marked), { cls: 'ghost sm', icon: 'copy' }),
     ),
     open
@@ -140,6 +146,26 @@ function skippedBox(r: SolveResult): HTMLElement | null {
     { class: 'skipped' },
     h('summary', {}, list.length === 1 ? 'דולג שדה אחד שהוא לא שאלה' : `דולגו ${list.length} שדות שהם לא שאלות`),
     h('div', { class: 'muted' }, list.map((x) => h('div', {}, `• ${x.reason || 'לא שאלה'}`))),
+  );
+}
+
+/** Matching: each box and the box it goes with, in two columns. */
+function matchTable(ans: Answer): HTMLElement {
+  return h(
+    'table',
+    { class: 'atable' },
+    h('tbody', {}, (ans.matches ?? []).map((m) => h('tr', {}, h('td', { class: 'rl' }, m.from), h('td', {}, '← ', h('span', { class: 'hl' }, m.to))))),
+  );
+}
+
+/** Marking with a color legend: every category with the sentences to mark in it. */
+function highlightList(ans: Answer): HTMLElement {
+  const by = new Map<string, string[]>();
+  for (const x of ans.highlights ?? []) by.set(x.label, [...(by.get(x.label) ?? []), x.text]);
+  return h(
+    'div',
+    { class: 'hlist' },
+    [...by.entries()].map(([label, texts]) => h('div', { class: 'hgrp' }, h('span', { class: 'qbadge' }, label), texts.map((t) => h('div', { class: 'htext' }, h('span', { class: 'hl' }, `"${t}"`))))),
   );
 }
 
@@ -213,7 +239,7 @@ function answersList(s: UIState, a: Actions): Rendered {
   }
   const grouped = groups.length > 1 || (groups.length === 1 && !!groups[0].title && groups[0].title.includes('·'));
   const rows = groups.flatMap((g) => g.rows);
-  const fillable = r.answers.some((x) => x.field_id);
+  const fillable = r.answers.some((x) => x.field_id || isActivity(x));
   const failedDocs = (r.documents ?? []).filter((d) => !d.ok);
   const failedVideos = (r.videos ?? []).filter((v) => !v.ok);
   return {

@@ -1,5 +1,6 @@
 import { DEFAULT_SETTINGS, getSettings, saveSettings, type Settings } from '../../shared/settings';
 import type { Answer, ChatMessage, FillOutcome, PortMessage, ReviewItem, SolveRequest, SolveResult, TaggedSnapshot, TaskSummary } from '../../shared/types';
+import { isActivity } from '../../shared/types';
 import { questionLine } from '../../background/coverage';
 import { PANEL_HOST_ID } from '../text';
 import { isStorySite } from '../extract';
@@ -386,14 +387,19 @@ export class Panel {
 
   private async fill(answers: Answer[]) {
     const items = answers.filter((a) => a.field_id).map((a) => ({ fieldId: a.field_id!, value: a.answer, option: a.option, cells: a.cells ?? null }));
-    if (!items.length) return this.toast('אין שדות למילוי. אפשר להעתיק את התשובות');
+    const acts = answers.filter((a) => !a.field_id && isActivity(a));
+    if (!items.length && !acts.length) return this.toast('אין שדות למילוי. אפשר להעתיק את התשובות');
     try {
-      const outcomes = await send<FillOutcome[]>({ type: 'fill', items });
+      const outcomes = items.length ? await send<FillOutcome[]>({ type: 'fill', items }) : [];
+      // matching / marking activities: clicked and marked on the page
+      const actOut = acts.length ? await send<{ key: string; done: number; total: number; misses: string[] }[]>({ type: 'activity', answers: acts }) : [];
       const filled = { ...this.store.get().filled };
       for (const o of outcomes) filled[o.fieldId] = { ok: o.ok, message: o.message };
+      for (const o of actOut) filled[o.key] = { ok: o.done > 0 && o.done === o.total, message: o.misses.length ? `לא נמצאו בדף: ${o.misses.slice(0, 3).join(' · ')}` : undefined };
       this.store.set({ filled });
-      const ok = outcomes.filter((o) => o.ok).length;
-      this.toast(items.length === 1 ? (ok ? 'מולא. תעבור עליו לפני שאתה שולח' : outcomes[0]?.message ?? 'לא הצלחתי למלא') : `מולאו ${ok} מתוך ${items.length} שדות. תעבור עליהם לפני שאתה שולח`);
+      const total = items.length + actOut.reduce((n, o) => n + o.total, 0);
+      const ok = outcomes.filter((o) => o.ok).length + actOut.reduce((n, o) => n + o.done, 0);
+      this.toast(total === 1 ? (ok ? 'מולא. תעבור עליו לפני שאתה שולח' : outcomes[0]?.message ?? 'לא הצלחתי למלא') : `בוצעו ${ok} מתוך ${total}. תעבור על הדף לפני שאתה שולח`);
     } catch (e) {
       this.toast(e instanceof Error ? e.message : 'המילוי נכשל');
     }

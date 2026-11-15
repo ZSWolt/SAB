@@ -8,7 +8,8 @@ import { fetchDocument } from './documents';
 import { addCost, deleteTask, fieldsHash, findPage, getTask, listTasks, previousPagesSummary, savePage, taskKey } from './tasks';
 import { testGeminiKey, watchVideoCached } from '../ai/gemini';
 import { getSettings, saveSettings } from '../shared/settings';
-import type { ChatMessage, DocumentRef, FillItem, FillOutcome, FrameSnapshot, PortMessage, SolveRequest, SolveResult, StepId, StepState, TaggedSnapshot } from '../shared/types';
+import type { ChatMessage, DocumentRef, FillItem, FillOutcome, FrameSnapshot, PortMessage, SolveRequest, SolveResult, StepId, StepState, TaggedSnapshot, Answer } from '../shared/types';
+import { activityKey } from '../shared/types';
 
 // ---------- frames ----------
 
@@ -226,6 +227,20 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
           const got = res[0]?.result ?? items.map((i) => ({ fieldId: i.fieldId, ok: false, message: 'המסגרת לא זמינה' }));
           out.push(...got.map((o) => ({ ...o, fieldId: `${frameId}:${o.fieldId}` })));
         }
+        return out;
+      }
+      case 'activity': {
+        // matching / marking activities: go to the answer's page, then click and mark in every frame
+        const list = msg.answers as Answer[];
+        const start = await nav(tabId, { op: 'outline' });
+        const out: { key: string; done: number; total: number; misses: string[] }[] = [];
+        for (const ans of list) {
+          if (ans.page && start?.pages) await nav(tabId, { op: 'goto', page: ans.page });
+          const res = await inAllFrames<{ done: number; total: number; misses: string[] }>(tabId, '__sabActivity', [{ matches: ans.matches, highlights: ans.highlights }]).catch(() => []);
+          const best = res.map((r) => r.result).sort((a, b) => b.done - a.done)[0] ?? { done: 0, total: (ans.matches?.length ?? 0) + (ans.highlights?.length ?? 0), misses: [] };
+          out.push({ key: activityKey(ans), ...best });
+        }
+        if (start?.pages) await nav(tabId, { op: 'goto', page: start.page, tab: start.tab });
         return out;
       }
       case 'undo': {

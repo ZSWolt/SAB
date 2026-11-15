@@ -34,13 +34,23 @@ const ANSWER_TOOL: BetaToolUnion = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['question', 'part', 'page', 'how', 'answer', 'cells', 'field_id', 'option'],
+          required: ['question', 'part', 'page', 'how', 'answer', 'cells', 'matches', 'highlights', 'field_id', 'option'],
           properties: {
             question: { type: 'string', description: 'מספר/כותרת השאלה כמו בדף, למשל "שאלה 2".' },
             part: { type: 'string', description: 'הסעיף, למשל "א" – או מחרוזת ריקה.' },
             page: { type: ['integer', 'null'], description: 'מספר העמוד במשימה שבו השאלה נמצאת (לפי === עמוד N ===), או null.' },
             how: { type: ['string', 'null'], description: 'מה לעשות בדף, 1–3 צעדים קצרים: בפעילות בלי שדה טקסט (גרירה, התאמה, לחיצה) – הפעולות המדויקות; בחיבור – איפה להדביק. null כשפשוט כותבים את התשובה בשדה שלה.' },
             answer: { type: 'string', description: 'התשובה המלאה, טקסט רגיל בלי markdown.' },
+            matches: {
+              type: ['array', 'null'],
+              description: 'רק בפעילות התאמה (שתי רשימות של תיבות, "התאימו בין..."): זוג לכל תיבה, from = הטקסט המדויק של התיבה מהרשימה הראשונה (בעיה/מושג), to = הטקסט המדויק של התיבה שמתאימה לה. אחרת null.',
+              items: { type: 'object', additionalProperties: false, required: ['from', 'to'], properties: { from: { type: 'string' }, to: { type: 'string' } } },
+            },
+            highlights: {
+              type: ['array', 'null'],
+              description: 'רק בפעילות סימון בטקסט עם מקרא צבעים (כפתורי קטגוריה): label = הנוסח המדויק של כפתור הקטגוריה, text = משפט או חלק משפט מועתק **בדיוק** מהטקסט. אחרת null.',
+              items: { type: 'object', additionalProperties: false, required: ['label', 'text'], properties: { label: { type: 'string' }, text: { type: 'string' } } },
+            },
             cells: {
               type: ['array', 'null'],
               description: 'רק לשאלה בטבלה: תא לכל תא ריק שממלאים (row/col מ-0 לפי table). אחרת null.',
@@ -139,13 +149,23 @@ const UPDATE_TOOL: BetaToolUnion = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['question', 'part', 'page', 'how', 'answer', 'cells', 'field_id', 'option'],
+          required: ['question', 'part', 'page', 'how', 'answer', 'cells', 'matches', 'highlights', 'field_id', 'option'],
           properties: {
             question: { type: 'string' },
             part: { type: 'string' },
             page: { type: ['integer', 'null'] },
             how: { type: ['string', 'null'] },
             answer: { type: 'string', description: 'התשובה החדשה, טקסט רגיל' },
+            matches: {
+              type: ['array', 'null'],
+              description: 'רק בפעילות התאמה (שתי רשימות של תיבות, "התאימו בין..."): זוג לכל תיבה, from = הטקסט המדויק של התיבה מהרשימה הראשונה (בעיה/מושג), to = הטקסט המדויק של התיבה שמתאימה לה. אחרת null.',
+              items: { type: 'object', additionalProperties: false, required: ['from', 'to'], properties: { from: { type: 'string' }, to: { type: 'string' } } },
+            },
+            highlights: {
+              type: ['array', 'null'],
+              description: 'רק בפעילות סימון בטקסט עם מקרא צבעים (כפתורי קטגוריה): label = הנוסח המדויק של כפתור הקטגוריה, text = משפט או חלק משפט מועתק **בדיוק** מהטקסט. אחרת null.',
+              items: { type: 'object', additionalProperties: false, required: ['label', 'text'], properties: { label: { type: 'string' }, text: { type: 'string' } } },
+            },
             cells: {
               type: ['array', 'null'],
               description: 'רק לשאלה בטבלה: תא לכל תא ריק שממלאים (row/col מ-0 לפי table). אחרת null.',
@@ -181,6 +201,8 @@ function isAnswer(a: unknown): a is Answer {
     typeof x.part === 'string' &&
     (x.how === undefined || x.how === null || typeof x.how === 'string') &&
     (x.page === undefined || x.page === null || typeof x.page === 'number') &&
+    (x.matches === undefined || x.matches === null || Array.isArray(x.matches)) &&
+    (x.highlights === undefined || x.highlights === null || Array.isArray(x.highlights)) &&
     (x.cells === undefined || x.cells === null || (Array.isArray(x.cells) && x.cells.every((c) => c && typeof (c as { row: unknown }).row === 'number' && typeof (c as { col: unknown }).col === 'number' && typeof (c as { text: unknown }).text === 'string'))) &&
     (x.field_id === null || typeof x.field_id === 'string') &&
     (x.option === null || typeof x.option === 'string')

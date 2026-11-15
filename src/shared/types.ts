@@ -88,6 +88,10 @@ export interface Answer {
   how?: string | null;
   /** For a table question: what goes in each empty cell. */
   cells?: TableCell[] | null;
+  /** A matching activity (two lists of boxes): which box goes with which, by their exact texts. */
+  matches?: { from: string; to: string }[] | null;
+  /** Marking sentences in a text with a color legend: category button label + the exact text. */
+  highlights?: { label: string; text: string }[] | null;
   /** Filled in by the extension: the table's cell texts, to show the answer as a table. */
   table?: string[][];
   /** Filled in by the extension from the page (not by Claude): the field's question and page. */
@@ -140,6 +144,10 @@ export interface FillOutcome {
   ok: boolean;
   message?: string;
 }
+
+/** Key in the panel's "filled" map for an activity answer (no field). */
+export const activityKey = (a: { question: string; part: string }) => `act:${a.question}|${a.part}`;
+export const isActivity = (a: { matches?: unknown[] | null; highlights?: unknown[] | null }) => !!(a.matches?.length || a.highlights?.length);
 
 /** A file the student added as the story (Story tab). */
 export interface StoryFile {

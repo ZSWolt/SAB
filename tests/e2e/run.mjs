@@ -65,7 +65,8 @@ function mockChat(body) {
 function mockAnswer(body) {
   if (body.tools.some((t) => t.name === 'update_answers')) return mockChat(body);
   const text = body.messages[0].content.map((c) => c.text ?? '').join('\n');
-  const fields = JSON.parse(text.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
+  const fieldsRaw = text.match(/<fields>\n([\s\S]*?)\n<\/fields>/)?.[1] ?? '[]';
+  const fields = fieldsRaw.trim().startsWith('[') ? JSON.parse(fieldsRaw) : []; // a page without fields
   if (body.tools.some((t) => t.name === 'submit_review')) {
     const items = fields.filter((f) => f.already_filled).map((f) => ({
       question: 'שאלה 5', part: '', field_id: f.id, grade: 55, correct: 'הזכרת את הפרפרים', missing: 'חסר קשר לדמות הכלה', improved: 'תשובה משופרת מהבדיקה',
@@ -89,6 +90,15 @@ function mockAnswer(body) {
     option: f.kind === 'radio' ? 'עגנון' : null,
   }));
   orphanNext = false;
+  // activities without fields: matching boxes and marking sentences with a color legend
+  if (text.includes('התאימו בין הבעיה לפתרון')) {
+    answers.push({ how: 'לחץ על בעיה ואז על הפתרון', cells: null, highlights: null, page: null, question: 'התאמה', part: '', answer: '', field_id: null, option: null,
+      matches: [{ from: 'אין תאורה', to: 'ההצגות מתקיימות במהלך היום' }, { from: 'יש רק שחקנים גברים', to: 'השחקנים מגלמים גם דמויות של נשים' }, { from: 'אין הגברה', to: 'השחקנים עומדים בקצה הבמה ומדברים ישירות לקהל' }] });
+  }
+  if (text.includes('מקרא הצבעים')) {
+    answers.push({ how: 'לחץ על הצבע ואז סמן', cells: null, matches: null, page: null, question: 'סימון', part: '', answer: '', field_id: null, option: null,
+      highlights: [{ label: 'למה הציגו הצגות?', text: 'התיאטרון לא היה בילוי או שעשוע של שעות הפנאי, אלא חלק מפולחן דתי' }, { label: 'איפה ומתי?', text: 'ההצגות התקיימו מהבוקר ועד הערב' }] });
+  }
   // the automatic completion asks for questions in the text ("שאלה 4") that have no field
   const textQs = text.match(/וגם השאלות שבטקסט: ([^(]+)\(/)?.[1];
   if (textQs) {
@@ -145,7 +155,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/pdf' });
     return res.end('%PDF-1.4\n% fake story pdf for the test\n%%EOF');
   }
-  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/classe.html': 'classe.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
+  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/classe.html': 'classe.html', '/activities.html': 'activities.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
   if (!file) return res.writeHead(404).end();
   let html = readFileSync(resolve('tests/fixtures', file), 'utf8');
   // the iframe is served from another origin (127.0.0.1 vs localhost) to test cross-origin frames
@@ -588,6 +598,23 @@ try {
   assert.equal(await cls.evaluate(() => window.__opened), 1, 'the closed bar was opened once');
   console.log('✓ classe: the story comes only from the bar on the right (opened by itself when closed), not from other text');
   await cls.close();
+
+  // matching and marking activities: shown clearly, and done on the page
+  const actP = await ctx.newPage();
+  await actP.goto(`http://localhost:${port}/activities.html`);
+  await actP.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await actP.keyboard.press('Alt+Shift+A');
+  await actP.waitForSelector('#sab-helper-host >> .atable >> text=ההצגות מתקיימות במהלך היום', { timeout: 30000 });
+  await actP.waitForSelector('#sab-helper-host >> .hgrp >> text=למה הציגו הצגות?');
+  await actP.setViewportSize({ width: 1100, height: 760 });
+  await shot(actP, '11-activities');
+  await actP.click('#sab-helper-host >> text=/מלא הכול בדף/');
+  await actP.waitForFunction(() => Object.keys(window.__pairs).length === 3 && window.__marks.length === 2, null, { timeout: 20000 });
+  assert.deepEqual(await actP.evaluate(() => window.__pairs), { 'אין תאורה': 'ההצגות מתקיימות במהלך היום', 'יש רק שחקנים גברים': 'השחקנים מגלמים גם דמויות של נשים', 'אין הגברה': 'השחקנים עומדים בקצה הבמה ומדברים ישירות לקהל' });
+  assert.deepEqual(await actP.evaluate(() => window.__marks.map((m) => m.cat)), ['why', 'where']);
+  assert.ok((await actP.evaluate(() => window.__marks[0].text)).includes('חלק מפולחן דתי'));
+  console.log('✓ matching and color-marking activities: shown as pairs / categories, and done on the page');
+  await actP.close();
 
   // a question left without an answer is completed automatically in the same solve
   skipIframeField = 1;

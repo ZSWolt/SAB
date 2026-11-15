@@ -5,6 +5,7 @@ import { fillFields, undoFill } from './fill';
 import { findFieldGroups } from './extract/fields';
 import { extractAllPages, fillAcrossPages, navGoto, navOutline, onWalkProgress } from './extract/pages';
 import { pageStructure } from './structure';
+import { runActivity } from './activities';
 import { Panel } from './ui/panel';
 
 // Runs in every frame. The background calls these through chrome.scripting.executeScript
@@ -25,6 +26,8 @@ const api = {
     if (host) host.style.visibility = op.op === 'hide' ? 'hidden' : '';
     return true;
   },
+  /** Matching / marking activities: clicks the boxes and marks the sentences (returns how many). */
+  __sabActivity: (act: Parameters<typeof runActivity>[0]) => runActivity(act),
   /** This frame's address, so the background can find the same iframe again after it is rebuilt. */
   __sabWhere: () => ({ url: location.href, top: window === window.top }),
   /** Fills fields of this frame by their position among the page's field groups. */

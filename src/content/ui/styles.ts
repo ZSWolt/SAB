@@ -246,6 +246,9 @@ textarea:focus, input:focus { outline: 2px solid var(--soft); border-color: var(
 .skipped { font-size: 12px; color: var(--muted); }
 .skipped summary { cursor: pointer; }
 .skipped > div { padding: 6px 12px 0; display: flex; flex-direction: column; gap: 2px; }
+.hlist { display: flex; flex-direction: column; gap: 10px; }
+.hgrp { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.htext { font-size: 13px; line-height: 22px; color: var(--text); }
 .atable { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; color: var(--text); }
 .atable th { text-align: right; font-weight: 500; font-size: 12px; color: var(--text2); padding: 4px 6px; border-bottom: 1px solid var(--strong); }
 .atable td { vertical-align: top; padding: 6px; border-bottom: 1px solid var(--line); }
