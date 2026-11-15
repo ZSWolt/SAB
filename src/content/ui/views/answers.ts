@@ -32,8 +32,8 @@ const CHIP: Record<RowKind, [string, string]> = { filled: ['מולא', 'ok'], un
 export function filterCounts(r: SolveResult, s: UIState): Record<Filter, number> {
   const kinds = r.answers.map((a) => answerKind(a, s));
   return {
-    all: r.answers.length + (r.missing?.length ?? 0),
-    missing: r.missing?.length ?? 0,
+    all: r.answers.length + (r.missing?.length ?? 0) + (r.missingText?.length ?? 0),
+    missing: (r.missing?.length ?? 0) + (r.missingText?.length ?? 0),
     unfilled: kinds.filter((k) => k === 'unfilled').length,
     filled: kinds.filter((k) => k === 'filled').length,
   };
@@ -131,6 +131,18 @@ function cellsTable(ans: Answer): HTMLElement {
   );
 }
 
+/** Fields Claude left out because they are not questions (name, class, an "+ idea" box), with its reason. */
+function skippedBox(r: SolveResult): HTMLElement | null {
+  const list = r.skipped ?? [];
+  if (!list.length) return null;
+  return h(
+    'details',
+    { class: 'skipped' },
+    h('summary', {}, list.length === 1 ? 'דולג שדה אחד שהוא לא שאלה' : `דולגו ${list.length} שדות שהם לא שאלות`),
+    h('div', { class: 'muted' }, list.map((x) => h('div', {}, `• ${x.reason || 'לא שאלה'}`))),
+  );
+}
+
 function missingRow(m: { field_id: string; context: string; page?: number; section?: string }, label: string, a: Actions): HTMLElement {
   return h(
     'div',
@@ -187,9 +199,11 @@ function answersList(s: UIState, a: Actions): Rendered {
     if (last && last.title === title) last.rows.push(el);
     else groups.push({ title, rows: [el] });
   };
-  for (const row of orderedRows(r.answers, r.missing ?? [])) {
+  // questions in the text without an answer show as missing too ("שאלה 5", no field)
+  const gaps: { field_id: string; context: string; page?: number; section?: string }[] = [...(r.missing ?? []), ...(r.missingText ?? []).map((n) => ({ field_id: '', context: `שאלה ${n} (בטקסט של המשימה, בלי שדה)` }))];
+  for (const row of orderedRows(r.answers, gaps)) {
     if (row.kind === 'missing') {
-      const m = r.missing![row.index];
+      const m = gaps[row.index];
       if (s.filter === 'all' || s.filter === 'missing') push(m, missingRow(m, row.label, a));
       continue;
     }
@@ -220,6 +234,7 @@ function answersList(s: UIState, a: Actions): Rendered {
         : grouped
           ? h('div', { class: 'answers grouped' }, groups.map((g) => h('div', { class: 'grp' }, h('div', { class: 'grp-t' }, g.title || 'בלי עמוד'), h('div', { class: 'list answers' }, g.rows))))
           : h('div', { class: 'list answers' }, rows),
+      skippedBox(r),
       r.notes ? h('div', { class: 'note' }, r.notes) : null,
       sourcesList(r.sources),
     ],

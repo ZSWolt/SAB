@@ -256,7 +256,7 @@ export class Panel {
   }
 
   /** solve / review / complete missing fields / solve again. */
-  async run(mode: SolveRequest['mode'], extra: Pick<SolveRequest, 'onlyFields' | 'force'> = {}) {
+  async run(mode: SolveRequest['mode'], extra: Pick<SolveRequest, 'onlyFields' | 'force' | 'missingText'> = {}) {
     const s = this.store.get();
     if (s.busy) return;
     if (!chrome.runtime?.id) return this.toast('התוסף התעדכן. תרענן את הדף (F5) ואז תנסה שוב');
@@ -300,7 +300,7 @@ export class Panel {
       if (cur.busy) this.store.set({ busy: false, view: cur.result ? 'results' : 'idle', error: cur.error ?? 'העבודה נעצרה לפני שהסתיימה' });
     });
     // "only what I haven't answered": the checkbox, or the same thing written in the note
-    const onlyEmpty = mode === 'solve' && !extra.onlyFields && (this.drafts.onlyEmpty || wantsOnlyEmpty(this.drafts.note));
+    const onlyEmpty = mode === 'solve' && !extra.onlyFields && !extra.missingText && (this.drafts.onlyEmpty || wantsOnlyEmpty(this.drafts.note));
     port.postMessage({ mode, note: this.drafts.note, manualStory: this.drafts.manualStory, storyFiles: this.drafts.storyFiles, screenshot, onlyEmpty, ...extra } satisfies SolveRequest);
   }
 
@@ -442,7 +442,7 @@ export class Panel {
       },
       completeMissing: () => {
         const r = this.store.get().result;
-        if (r?.missing?.length) this.run('solve', { onlyFields: r.missing.map((m) => m.field_id) });
+        if (r?.missing?.length || r?.missingText?.length) this.run('solve', { onlyFields: (r.missing ?? []).map((m) => m.field_id), missingText: r.missingText ?? [] });
       },
       solveAgain: () => this.run('solve', { force: true }),
       openSheet: (sheet: Exclude<Sheet, null>) => set({ sheet }),

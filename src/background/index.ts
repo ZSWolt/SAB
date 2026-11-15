@@ -1,7 +1,7 @@
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { buildChatContent, buildContent, chatSystemPrompt, collectStories, reviewSystemPrompt, systemPrompt, type PdfBlock, type StoryBlock } from '../ai/prompt';
+import { buildChatContent, buildContent, chatSystemPrompt, collectStories, reviewSystemPrompt, systemPrompt, type PdfBlock, type PromptInput, type StoryBlock } from '../ai/prompt';
 import { chatWithClaude, reviewWithClaude, solveWithClaude, SolveError, testKey } from '../ai/claude';
-import { checkCoverage, enrich, mergeResults } from './coverage';
+import { attachOrphans, checkCoverage, enrich, mergeResults } from './coverage';
 import { currentFrames, inAllFrames } from './frames';
 import { nav, parseWalkId, walkTask } from './walk';
 import { fetchDocument } from './documents';
@@ -395,7 +395,7 @@ chrome.runtime.onConnect.addListener((port) => {
         req.onlyReason = 'empty';
       }
       // a note or "only empty" is a new request: never answer it with the saved answers
-      const solvedPage = req.mode === 'solve' && !req.force && !req.onlyFields?.length && !req.note.trim() && !req.storyFiles?.length ? findPage(task, hash) : null;
+      const solvedPage = req.mode === 'solve' && !req.force && !req.onlyFields?.length && !req.missingText?.length && !req.note.trim() && !req.storyFiles?.length ? findPage(task, hash) : null;
       if (solvedPage) {
         const results = await getMap<unknown>('results');
         results[tabId] = solvedPage.result;
@@ -475,7 +475,7 @@ chrome.runtime.onConnect.addListener((port) => {
         step('videos', watched ? 'done' : 'fail', videoUrls.length > 1 ? `${videoUrls.length} סרטונים` : 'סרטון', watched === videoUrls.length ? 'נצפה' : `${watched} מתוך ${videoUrls.length} נצפו`);
       }
 
-      const content = buildContent({
+      const promptInput: PromptInput = {
         mode: req.mode,
         snaps,
         opener,
@@ -487,10 +487,12 @@ chrome.runtime.onConnect.addListener((port) => {
         previousPages: req.mode === 'solve' ? previousPagesSummary(task, hash) : '',
         onlyFields: req.onlyFields,
         onlyReason: req.onlyReason ?? 'missing',
+        missingText: req.missingText,
         screenshot: req.screenshot,
         images: walkImages.get(tabId) ?? [],
         storyImages: fileImages,
-      });
+      };
+      const content = buildContent(promptInput);
       let searches = 0;
       const callbacks = {
         onSearch: (query: string) => {
@@ -518,8 +520,34 @@ chrome.runtime.onConnect.addListener((port) => {
       }
 
       let result = await solveWithClaude(settings, systemPrompt(settings), content, callbacks, abort.signal);
+      // an answer written without its field (or with a wrong id) goes to the field of its question
+      result.answers = enrich(attachOrphans(result.answers, snaps), snaps);
+
+      // questions left without an answer: ask once more for just those, in the same solve
+      // (not when the student limited the questions: "complete the missing", "only empty", a note)
+      if (!req.onlyFields?.length && !req.missingText?.length && !req.note.trim()) {
+        const gap = checkCoverage(snaps, result);
+        if (gap.missing.length || gap.missingText.length) {
+          const n = gap.missing.length + gap.missingText.length;
+          step('write', 'run', n === 1 ? 'משלים שאלה אחת שחסרה' : `משלים ${n} שאלות שחסרו`);
+          try {
+            const more = await solveWithClaude(
+              settings,
+              systemPrompt(settings),
+              buildContent({ ...promptInput, onlyFields: gap.missing.map((m) => m.field_id), onlyReason: 'missing', missingText: gap.missingText }),
+              callbacks,
+              abort.signal,
+            );
+            more.answers = enrich(attachOrphans(more.answers, snaps), snaps);
+            result = mergeResults(result, more);
+            result.answers = enrich(attachOrphans(result.answers, snaps), snaps);
+          } catch (e) {
+            if (abort.signal.aborted) throw e;
+            // the first answers are still good: show them, with what is missing
+          }
+        }
+      }
       finishSteps();
-      result.answers = enrich(result.answers, snaps);
       if (markers > fields) result.questionGap = { markers, fields };
       result.videos = videoStatus;
       result.documents = docs.status;
@@ -528,7 +556,7 @@ chrome.runtime.onConnect.addListener((port) => {
       const addedCost = result.costUsd;
 
       const results = await getMap<SolveResult>('results');
-      if (req.onlyFields?.length && results[tabId]) result = mergeResults(results[tabId], result);
+      if ((req.onlyFields?.length || req.missingText?.length) && results[tabId]) result = mergeResults(results[tabId], result);
       // with "only empty", the fields the student answered are not missing
       Object.assign(result, checkCoverage(snaps, result, req.onlyReason === 'empty' ? req.onlyFields : undefined));
       results[tabId] = result;

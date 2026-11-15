@@ -64,7 +64,8 @@ ${writingSection(settings)}
 - ברשימת השדות לכל שדה יש id ואת הטקסט שמסביבו. כשתשובה שייכת לשדה – תשים את ה-id שלו ב-field_id (בדיוק כמו שהוא, כולל המספר שלפני הנקודתיים). כל שדה מקבל בדיוק תשובה אחת.
 - גם שאלות בלי שדה (למשל שאלות שמופיעות רק כטקסט, או שאלות שעונים עליהן במסמך נפרד) – תענה עליהן עם field_id = null.
 - בשדות סימון (checkbox) עם כמה תשובות נכונות – תכתוב ב-option את כל האפשרויות הנכונות מופרדות ב-";".
-- שדה שהוא לא שאלה (שם, כיתה, ת"ז) – תשאיר אותו בלי תשובה.
+- **כל** שדה ברשימה מקבל תשובה, **או** נכנס ל-skipped עם סיבה קצרה, אבל רק אם הוא באמת לא שאלה (שם, כיתה, ת"ז, תיבת "רעיון חדש", חיפוש). על שאלה אמיתית אסור לדלג.
+- **כל** שאלה שמופיעה בטקסט ("שאלה 5", או שאלה בלי מספר) מקבלת תשובה, גם אם אין לה שדה. אבל כותרת, הוראת קריאה, שם של מקור או "שימו לב" הם לא שאלות, ואין להם תשובה.
 - אם המשימה מחולקת לעמודים (=== עמוד 2 מתוך 3 === בטקסט, ו-page בשדות) – תענה על השאלות של **כל** העמודים.
 - אם המשימה מחולקת ללשוניות (=== לשונית "מפת מקורות" === בטקסט, ו-section בשדות) – כל הלשוניות הן חלק מאותה משימה: תשתמש במקורות ובחומר מכל הלשוניות כדי לענות על השאלות שבכל אחת מהן.
 - באתר של מט"ח (site="cet"): "המשימה" היא השאלה, "מפת מקורות" היא החומר (מקורות, היסטוריונים, פרוטוקולים), ו"שולחן כתיבה" הוא העורך שבו כותבים את התשובה. העורך שבשולחן הכתיבה מקבל את התשובה לשאלת המשימה. אל תמציא שאלות מכותרות של מקורות.
@@ -119,6 +120,8 @@ export interface PromptInput {
   onlyFields?: string[];
   /** Why only some fields: "missing" (complete the missing ones) or "empty" (the student answered the rest). */
   onlyReason?: 'missing' | 'empty';
+  /** "שאלה N" headings in the text that got no answer last time. */
+  missingText?: number[];
   screenshot?: string | null;
   /** Pictures of activities taken while walking the task's pages/tabs (CET). */
   images?: { label: string; dataUrl: string }[];
@@ -197,8 +200,11 @@ export function buildPageText(input: PromptInput): string {
     parts.push('תבדוק את התשובות שהתלמיד כתב (already_filled), ואז תקרא ל-submit_review.');
   } else if (input.onlyFields?.length && input.onlyReason === 'empty') {
     parts.push('התלמיד כבר ענה בעצמו על שאר השאלות. תענה **רק** על השדות שברשימה (על כל אחד מהם), בלי שאלות אחרות, ואז תקרא ל-submit_answers.');
-  } else if (input.onlyFields?.length) {
-    parts.push('בפעם הקודמת השדות שברשימה לא קיבלו תשובה. תענה **רק** עליהם (על כל אחד מהם), ואז תקרא ל-submit_answers.');
+  } else if (input.onlyFields?.length || input.missingText?.length) {
+    const textQs = input.missingText?.length ? ` וגם השאלות שבטקסט: ${input.missingText.map((n) => `שאלה ${n}`).join(', ')} (בלי שדה, field_id = null)` : '';
+    parts.push(
+      `בפעם הקודמת ${input.onlyFields?.length ? 'השדות שברשימה' : 'חלק מהשאלות'}${textQs} לא קיבלו תשובה. תענה **רק** עליהם, על כל אחד מהם. אם שדה באמת לא שאלה (שם, כיתה, תיבת רעיון), תכניס אותו ל-skipped עם סיבה. ואז תקרא ל-submit_answers.`,
+    );
   } else if (input.note.trim()) {
     parts.push('תעשה בדיוק מה שכתוב ב-student_note. אם היא מגבילה לאילו שאלות לענות, תענה רק עליהן. רק אם היא לא מגבילה, תענה על כל השאלות והסעיפים שבמשימה. ואז תקרא ל-submit_answers.');
   } else {

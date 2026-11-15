@@ -28,7 +28,11 @@ function toolEvents(body, name, input) {
   ];
 }
 
-let skipIframeField = true;
+// how many times the mock "forgets" the iframe field (text input): 2 = the first solve and its
+// automatic completion both forget it, so the "complete the missing" button can be tested
+let skipIframeField = 2;
+// the next answer for the textarea comes without its field id (an "orphan")
+let orphanNext = false;
 
 function mockChat(body) {
   const ctx = body.messages[0].content.map((c) => c.text ?? '').join('\n');
@@ -70,8 +74,9 @@ function mockAnswer(body) {
   }
   // first time on the main task page: "forget" the field in the iframe, to test "complete the missing ones"
   const isOnly = text.includes('תענה **רק** עליהם');
-  const visible = !isOnly && skipIframeField && fields.length === 3 ? fields.filter((f) => f.kind !== 'text') : fields;
-  if (visible !== fields) skipIframeField = false;
+  const forget = skipIframeField > 0 && fields.some((f) => f.kind === 'text');
+  if (forget) skipIframeField--;
+  const visible = forget ? fields.filter((f) => f.kind !== 'text') : fields;
   // like the model: number each answer as the page does ("שאלה 3"), not by its place in this reply
   const answers = visible.map((f, i) => ({
     how: f.kind === 'richtext' ? 'להדביק בשולחן הכתיבה' : null,
@@ -80,9 +85,17 @@ function mockAnswer(body) {
     question: `שאלה ${(f.question_text ?? "").match(/שאלה (\d+)/)?.[1] ?? i + 1}`,
     part: '',
     answer: f.kind === 'radio' ? 'כי הוא כתב אותו' : f.kind === 'text' ? '1966' : 'תשובה לבדיקה',
-    field_id: f.id,
+    field_id: orphanNext && f.kind === 'textarea' ? null : f.id,
     option: f.kind === 'radio' ? 'עגנון' : null,
   }));
+  orphanNext = false;
+  // the automatic completion asks for questions in the text ("שאלה 4") that have no field
+  const textQs = text.match(/וגם השאלות שבטקסט: ([^(]+)\(/)?.[1];
+  if (textQs) {
+    for (const n of textQs.match(/\d+/g) ?? []) {
+      answers.push({ how: 'גרור 👍 לכרטיס של ישראל גלילי', cells: null, question: `שאלה ${n}`, part: '', answer: 'הטענה שלו תומכת בהכרזה', field_id: null, option: null, page: 2 });
+    }
+  }
   const input = JSON.stringify({ answers, sources: [{ title: 'פרס נובל', url: 'https://www.nobelprize.org/' }], notes: '' });
   return [
     { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: body.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1000, output_tokens: 1 } } },
@@ -484,16 +497,19 @@ try {
   await hist.waitForFunction(() => window.__page === 3 && document.querySelector('a[data-t="3"]'));
   await hist.click('a[data-t="3"]');
   await hist.waitForFunction(() => window.__tab === 3 && document.querySelector('#edframe'));
+  const histStart = requests.length;
   await hist.keyboard.press('Alt+Shift+A');
-  await hist.waitForSelector('#sab-helper-host >> .rl >> text=1/1', { timeout: 40000 });
-  const histText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
+  await hist.waitForSelector('#sab-helper-host >> .rl >> text=2/2', { timeout: 40000 });
+  const histText = requests[histStart].body.messages[0].content.map((c) => c.text ?? '').join('\n');
+  assert.ok(requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n').includes('וגם השאלות שבטקסט: שאלה 4'), '"שאלה 4" (drag activity, no field) was missing and asked for again');
+  await hist.waitForSelector('#sab-helper-host >> .ahow >> text=גרור 👍 לכרטיס של ישראל גלילי');
   const histFields = JSON.parse(histText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
   assert.deepEqual(histFields.map((f) => [f.id.split(':').slice(1).join(':').replace(/\|f[^|]+\|/, '|IFRAME|'), f.kind, f.page, f.section]), [['w|p3.t3|IFRAME|0', 'richtext', 3, 'שולחן כתיבה']], `only the essay editor is a question: ${JSON.stringify(histFields)}`);
   assert.ok(histFields[0].question_text.includes('האם התקיימה או לא התקיימה הצבעה'), 'the editor carries the task question');
   assert.deepEqual(histFields[0].table[0], ['מאפיין סיפור חניכה', 'הדגמה וביסוס'], 'the table in the editor is sent');
   assert.equal(histFields[0].table.filter((r) => r[1] === '').length, 3, 'with its 3 empty cells');
   for (const t of ['אניטה שפירא', 'שאלה 4 (32 נקודות)', 'עמוד 3 מתוך 4 · לשונית "מפת מקורות"', 'סכנת הפלישה של צבאות ערב מוקטנת בעיני הבריטים', 'אחה"ב מתנגדת להכרזה']) assert.ok(histText.includes(t), `read: ${t}`);
-  const histImages = requests.at(-1).body.messages[0].content.filter((c) => c.type === 'image');
+  const histImages = requests[histStart].body.messages[0].content.filter((c) => c.type === 'image');
   assert.ok(histImages.length >= 1, 'pictures of the activities sent');
   assert.equal(histText.split('לשונית "שולחן כתיבה" ===').length - 1, 1, 'the writing desk on page 4 is the same one: read once');
   assert.ok(!histText.includes('מייל של חבר'), 'share tab skipped');
@@ -522,7 +538,7 @@ try {
   const report = JSON.parse(readFileSync(await dl.path(), 'utf8'));
   assert.equal(report.report, 'sab-diagnostics');
   assert.ok(report.walk.units.length >= 5 && report.walk.units.some((u) => u.heading.includes('שולחן כתיבה')), 'walk units in the report');
-  assert.ok(report.lastResult.answers.length === 1 && report.outline.pages === 4, 'answers and outline in the report');
+  assert.ok(report.lastResult.answers.length === 2 && report.outline.pages === 4, 'answers and outline in the report');
   assert.ok(!JSON.stringify(report).includes('תשובה לבדיקה'), 'no answer text in the report');
   console.log('✓ diagnostic report: outline, what was read on each page/tab, numbering, no answer text');
   await hist.close();
@@ -558,6 +574,30 @@ try {
   assert.ok(noteText.includes('<student_note>') && noteText.includes('התלמיד כבר ענה בעצמו על שאר השאלות'), 'the note is understood as "only empty"');
   console.log('✓ the same request written in the note works, and is never answered from the saved answers');
   await part.close();
+
+  // a question left without an answer is completed automatically in the same solve
+  skipIframeField = 1;
+  const auto = await ctx.newPage();
+  await auto.goto(`http://localhost:${port}/task.html?attempt=77`);
+  await auto.waitForSelector('#sab-helper-host', { state: 'attached' });
+  const beforeAuto = requests.length;
+  await auto.keyboard.press('Alt+Shift+A');
+  await auto.waitForSelector('#sab-helper-host >> .rl >> text=3/3', { timeout: 30000 });
+  assert.equal(requests.length - beforeAuto, 2, 'one automatic completion request');
+  assert.ok(requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n').includes('לא קיבלו תשובה'), 'the second request asks only for what was missing');
+  assert.equal(await auto.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.chip.bad').length), 0, 'nothing missing');
+  console.log('✓ a missing answer is completed automatically in the same solve (no "חסר" left)');
+  // an answer that came back without its field id goes to its field
+  orphanNext = true;
+  await auto.goto(`http://localhost:${port}/task.html?attempt=78`);
+  await auto.waitForSelector('#sab-helper-host', { state: 'attached' });
+  const beforeOrphan = requests.length;
+  await auto.keyboard.press('Alt+Shift+A');
+  await auto.waitForSelector('#sab-helper-host >> .rl >> text=3/3', { timeout: 30000 });
+  assert.equal(requests.length - beforeOrphan, 1, 'no extra request: the answer was connected to its field');
+  assert.equal(await auto.evaluate(() => [...document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.chip')].filter((c) => c.textContent === 'להעתקה').length), 0, 'no "copy only" answer');
+  console.log('✓ an answer without its field id is connected to its question\'s field');
+  await auto.close();
 
   // a long task on a site that isn't classe: no story is picked up, and the answers tab scrolls
   const many = await ctx.newPage();

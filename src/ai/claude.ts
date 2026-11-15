@@ -26,7 +26,7 @@ const ANSWER_TOOL: BetaToolUnion = {
   input_schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['answers', 'sources', 'notes'],
+    required: ['answers', 'sources', 'notes', 'skipped'],
     properties: {
       answers: {
         type: 'array',
@@ -66,6 +66,16 @@ const ANSWER_TOOL: BetaToolUnion = {
         },
       },
       notes: { type: 'string', description: 'הערות קצרות לתלמיד (מה לא היה ברור). מחרוזת ריקה אם אין.' },
+      skipped: {
+        type: 'array',
+        description: 'שדות מהרשימה שהם לא שאלה (שם, כיתה, תיבת רעיון, חיפוש) ולכן אין להם תשובה. ריק אם כל השדות נענו.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['field_id', 'reason'],
+          properties: { field_id: { type: 'string' }, reason: { type: 'string' } },
+        },
+      },
     },
   },
 };
@@ -202,13 +212,16 @@ export function parseReview(input: unknown): { items: ReviewItem[]; overall: str
 }
 
 /** Validates the tool input: the streamed JSON can come back cut off. */
-export function parseAnswers(input: unknown): { answers: Answer[]; sources: Source[]; notes: string } | null {
+export function parseAnswers(input: unknown): { answers: Answer[]; sources: Source[]; notes: string; skipped: { field_id: string; reason: string }[] } | null {
   const x = input as Record<string, unknown>;
   if (!x || !Array.isArray(x.answers) || !x.answers.every(isAnswer)) return null;
   const sources = Array.isArray(x.sources)
     ? (x.sources as Source[]).filter((s) => s && typeof s.url === 'string' && /^https?:\/\//.test(s.url))
     : [];
-  return { answers: x.answers, sources, notes: typeof x.notes === 'string' ? x.notes : '' };
+  const skipped = Array.isArray(x.skipped)
+    ? (x.skipped as { field_id: string; reason: string }[]).filter((s) => s && typeof s.field_id === 'string').map((s) => ({ field_id: s.field_id, reason: String(s.reason ?? '') }))
+    : [];
+  return { answers: x.answers, sources, notes: typeof x.notes === 'string' ? x.notes : '', skipped };
 }
 
 function cost(model: string, usage: BetaUsage | undefined, searches: number): number {

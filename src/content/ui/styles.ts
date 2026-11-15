@@ -243,6 +243,9 @@ textarea:focus, input:focus { outline: 2px solid var(--soft); border-color: var(
 .files { display: flex; flex-direction: column; gap: 4px; }
 .m.file { display: flex; align-items: center; gap: 8px; }
 .m.file .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skipped { font-size: 12px; color: var(--muted); }
+.skipped summary { cursor: pointer; }
+.skipped > div { padding: 6px 12px 0; display: flex; flex-direction: column; gap: 2px; }
 .atable { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; color: var(--text); }
 .atable th { text-align: right; font-weight: 500; font-size: 12px; color: var(--text2); padding: 4px 6px; border-bottom: 1px solid var(--strong); }
 .atable td { vertical-align: top; padding: 6px; border-bottom: 1px solid var(--line); }

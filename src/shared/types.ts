@@ -115,6 +115,10 @@ export interface SolveResult {
   missing?: { field_id: string; context: string; page?: number; section?: string }[];
   /** Fields that got more than one answer. */
   duplicates?: string[];
+  /** Fields Claude says are not questions (name, class, an "+ idea" box), with the reason. */
+  skipped?: { field_id: string; reason: string }[];
+  /** "שאלה N" headings in the page text that got no answer (questions without a field). */
+  missingText?: number[];
   /** The story came from an earlier page of the same task. */
   storyFromMemory?: boolean;
   /** More question signs in the page than fields found. */
@@ -160,6 +164,8 @@ export interface SolveRequest {
   onlyEmpty?: boolean;
   /** Files the student added as the story. */
   storyFiles?: StoryFile[];
+  /** Questions in the text (by number) to answer now ("complete the missing"). */
+  missingText?: number[];
   /** Set by the background: why only some fields are asked for. */
   onlyReason?: 'missing' | 'empty';
 }
