@@ -63,8 +63,11 @@ function resultRow(ans: Answer, i: number, label: string, s: UIState, a: Actions
         h('span', { class: 'qline' }, qbadge(label), where(ans), h('span', { class: `chip ${cls}` }, chip)),
         h('span', { class: 'cq', title: q }, q),
         ans.how ? h('div', { class: 'ahow' }, icon('pick', 14), h('span', {}, h('b', {}, 'מה לעשות: '), ans.how)) : null,
-        // a long answer (an essay) shows its start; "פירוט" opens all of it
-        h('div', { class: `amark${!open && marked.length > 320 ? ' clamp' : ''}` }, h('span', { class: 'hl' }, marked)),
+        // a table question: the table itself, with the answers marked in their cells
+        ans.cells?.length
+          ? cellsTable(ans)
+          : // a long answer (an essay) shows its start; "פירוט" opens all of it
+            h('div', { class: `amark${!open && marked.length > 320 ? ' clamp' : ''}` }, h('span', { class: 'hl' }, marked)),
       ),
     ),
     h(
@@ -88,6 +91,43 @@ function resultRow(ans: Answer, i: number, label: string, s: UIState, a: Actions
           fillMsg ? h('div', { class: 'qstatus bad' }, fillMsg) : null,
         )
       : null,
+  );
+}
+
+/**
+ * A table answer, laid out like the table on the page: each row's own text (the first column) next
+ * to what goes in the empty cell, under the column's header.
+ */
+function cellsTable(ans: Answer): HTMLElement {
+  const rows = ans.table ?? [];
+  const cells = [...(ans.cells ?? [])].sort((a, b) => a.row - b.row || a.col - b.col);
+  const head = rows[0] ?? [];
+  const cols = [...new Set(cells.map((c) => c.col))];
+  const labelCol = rows.length ? [0, 1, 2].find((c) => !cols.includes(c) && rows.slice(1).some((r) => r[c])) ?? -1 : -1;
+  const byRow = new Map<number, Map<number, string>>();
+  for (const c of cells) {
+    const m = byRow.get(c.row) ?? new Map<number, string>();
+    m.set(c.col, c.text);
+    byRow.set(c.row, m);
+  }
+  return h(
+    'table',
+    { class: 'atable' },
+    head.length
+      ? h('thead', {}, h('tr', {}, labelCol >= 0 ? h('th', {}, head[labelCol] ?? '') : null, cols.map((c) => h('th', {}, head[c] || `עמודה ${c + 1}`))))
+      : null,
+    h(
+      'tbody',
+      {},
+      [...byRow.entries()].map(([r, m]) =>
+        h(
+          'tr',
+          {},
+          labelCol >= 0 ? h('td', { class: 'rl' }, rows[r]?.[labelCol] ?? `שורה ${r + 1}`) : h('td', { class: 'rl' }, `שורה ${r + 1}`),
+          cols.map((c) => h('td', {}, m.has(c) ? h('span', { class: 'hl' }, m.get(c)!) : '')),
+        ),
+      ),
+    ),
   );
 }
 

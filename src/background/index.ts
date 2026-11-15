@@ -174,7 +174,7 @@ async function fillWalked(tabId: number, items: FillItem[]): Promise<FillOutcome
         out.push({ fieldId: it.fieldId, ok: false, message: 'לא מצאתי את המקום של השדה בדף' });
         continue;
       }
-      groups.set(frameId, [...(groups.get(frameId) ?? []), { fieldId: it.fieldId, value: it.value, option: it.option, pos: it.pos }]);
+      groups.set(frameId, [...(groups.get(frameId) ?? []), { fieldId: it.fieldId, value: it.value, option: it.option, cells: it.cells ?? null, pos: it.pos }]);
     }
     for (const [frameId, list] of groups) {
       const res = await inAllFrames<FillOutcome[]>(tabId, '__sabFillAt', [list], [frameId]).catch(() => []);

@@ -39,6 +39,27 @@ function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: strin
   });
 }
 
+/** Writes each cell into the editor's table (row and column as in the table, header row included). */
+function fillTable(el: HTMLElement, cells: { row: number; col: number; text: string }[]): number {
+  const table = el.querySelector('table');
+  if (!table) return 0;
+  let placed = 0;
+  for (const c of cells) {
+    const td = table.rows[c.row]?.cells[c.col];
+    if (!td) continue;
+    td.replaceChildren();
+    c.text.split('\n').forEach((line, i) => {
+      if (i) td.appendChild(el.ownerDocument.createElement('br'));
+      td.appendChild(el.ownerDocument.createTextNode(line));
+    });
+    placed++;
+  }
+  // tell the editor (TinyMCE / React) that the content changed
+  el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  return placed;
+}
+
 function setRichText(el: HTMLElement, value: string) {
   const prev = el.innerHTML;
   el.focus();
@@ -161,10 +182,16 @@ export function fillFields(items: FillItem[], doc: Document = document): FillOut
           setNativeValue(el as HTMLInputElement, item.value);
           highlight(el);
           return { fieldId: item.fieldId, ok: true };
-        case 'richtext':
+        case 'richtext': {
+          if (item.cells?.length) {
+            const placed = fillTable(el as HTMLElement, item.cells);
+            highlight(el);
+            return placed === item.cells.length ? { fieldId: item.fieldId, ok: true } : { fieldId: item.fieldId, ok: placed > 0, message: `מולאו ${placed} מתוך ${item.cells.length} תאים בטבלה` };
+          }
           setRichText(el as HTMLElement, item.value);
           highlight(el);
           return { fieldId: item.fieldId, ok: true };
+        }
         case 'select': {
           const ok = pickSelect(el as HTMLSelectElement, item.option ?? item.value);
           if (ok) highlight(el);

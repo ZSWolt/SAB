@@ -53,8 +53,13 @@
           d.open();
           d.write('<!doctype html><html dir="rtl"><body contenteditable="true" style="min-height:120px"></body></html>');
           d.close();
-          d.body.textContent = window.__vals.essay ?? '';
-          d.body.addEventListener('input', () => (window.__vals.essay = d.body.textContent));
+          // like the real task: the editor holds a table to fill (the 2nd column is empty)
+          d.body.innerHTML = window.__vals.essayHtml ?? '<table border="1"><tr><th>מאפיין סיפור חניכה</th><th>הדגמה וביסוס</th></tr>' +
+            '<tr><td>דמות משנה מבוגרת, דמות חונך</td><td></td></tr><tr><td>המסע הפנימי כרוך במסע פיזי</td><td></td></tr><tr><td>בסופו של דבר הגיבור מוצא את מקומו</td><td></td></tr></table><p></p>';
+          d.body.addEventListener('input', () => {
+            window.__vals.essayHtml = d.body.innerHTML;
+            window.__vals.essay = d.body.textContent;
+          });
         }
       }, 120);
     }

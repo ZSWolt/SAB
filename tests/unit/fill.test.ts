@@ -51,3 +51,22 @@ describe('fill', () => {
     expect(matchScore('1945', '1948')).toBeLessThan(0.45);
   });
 });
+
+import { describeFields as describeTable, findFieldGroups as groupsForTable } from '../../src/content/extract/fields';
+import { fillFields as fillTableFields } from '../../src/content/fill';
+
+describe('a table inside an editor', () => {
+  it('is read as a table question and filled cell by cell', () => {
+    document.body.innerHTML = `<p>השלימו את הטבלה</p><div contenteditable="true"><table>
+      <tr><th>מאפיין</th><th>הדגמה</th></tr><tr><td>דמות חונך</td><td></td></tr><tr><td>מסע פיזי</td><td></td></tr></table></div>`;
+    const groups = groupsForTable();
+    const [f] = describeTable(groups);
+    expect(f.kind).toBe('richtext');
+    expect(f.table?.rows).toEqual([['מאפיין', 'הדגמה'], ['דמות חונך', ''], ['מסע פיזי', '']]);
+    expect(f.value).toBeUndefined(); // empty cells: not answered yet
+    const [res] = fillTableFields([{ fieldId: groups[0].id, value: '', option: null, cells: [{ row: 1, col: 1, text: 'הסבא' }, { row: 2, col: 1, text: 'הנסיעה' }] }]);
+    expect(res.ok).toBe(true);
+    const rows = [...document.querySelectorAll('tr')].map((tr) => [...tr.cells].map((c) => c.textContent));
+    expect(rows).toEqual([['מאפיין', 'הדגמה'], ['דמות חונך', 'הסבא'], ['מסע פיזי', 'הנסיעה']]);
+  });
+});

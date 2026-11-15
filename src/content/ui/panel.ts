@@ -384,7 +384,7 @@ export class Panel {
   }
 
   private async fill(answers: Answer[]) {
-    const items = answers.filter((a) => a.field_id).map((a) => ({ fieldId: a.field_id!, value: a.answer, option: a.option }));
+    const items = answers.filter((a) => a.field_id).map((a) => ({ fieldId: a.field_id!, value: a.answer, option: a.option, cells: a.cells ?? null }));
     if (!items.length) return this.toast('אין שדות למילוי. אפשר להעתיק את התשובות');
     try {
       const outcomes = await send<FillOutcome[]>({ type: 'fill', items });

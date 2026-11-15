@@ -8,7 +8,7 @@ export function checkCoverage(snaps: TaggedSnapshot[], result: SolveResult, only
   const wanted = only?.length ? new Set(only) : null;
   const missing = snaps.flatMap((s) =>
     s.fields
-      .map((f) => ({ kind: f.kind, field_id: `${s.frameId}:${f.id}`, context: f.context.replace(/\s+/g, ' ').slice(0, 200), ...(f.page ? { page: f.page } : {}), ...(f.section ? { section: f.section } : {}) }))
+      .map((f) => ({ kind: f.kind, field_id: `${s.frameId}:${f.id}`, context: f.context.replace(/\s+/g, ' ').slice(0, 200), ...(f.page ? { page: f.page } : {}), ...(f.table ? { table: f.table.rows } : {}), ...(f.section ? { section: f.section } : {}) }))
       // only real questions count as missing: an empty box without a question next to it is not one
       .filter((f) => (!wanted || wanted.has(f.field_id)) && !counts.has(f.field_id) && (wanted || f.kind === 'richtext' || f.kind === 'textarea' || looksLikeQuestion(f.context)))
       .map(({ kind: _kind, ...m }) => m),
@@ -47,6 +47,6 @@ export function enrich<T extends { field_id: string | null }>(items: T[], snaps:
   return items.map((it) => {
     const f = it.field_id ? map.get(it.field_id) : undefined;
     if (!f) return it;
-    return { ...it, questionText: questionLine(f.context), ...(f.page ? { page: f.page } : {}), ...(f.section ? { section: f.section } : {}), ...(withValue && f.value ? { studentAnswer: f.value } : {}) };
+    return { ...it, questionText: questionLine(f.context), ...(f.page ? { page: f.page } : {}), ...(f.table ? { table: f.table.rows } : {}), ...(f.section ? { section: f.section } : {}), ...(withValue && f.value ? { studentAnswer: f.value } : {}) };
   });
 }

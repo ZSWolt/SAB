@@ -75,6 +75,8 @@ function mockAnswer(body) {
   // like the model: number each answer as the page does ("שאלה 3"), not by its place in this reply
   const answers = visible.map((f, i) => ({
     how: f.kind === 'richtext' ? 'להדביק בשולחן הכתיבה' : null,
+    // a table question: one cell for every empty cell
+    cells: f.table ? f.table.flatMap((row, r) => row.map((c, col) => (c ? null : { row: r, col, text: `הדגמה לשורה ${r}` }))).filter(Boolean) : null,
     question: `שאלה ${(f.question_text ?? "").match(/שאלה (\d+)/)?.[1] ?? i + 1}`,
     part: '',
     answer: f.kind === 'radio' ? 'כי הוא כתב אותו' : f.kind === 'text' ? '1966' : 'תשובה לבדיקה',
@@ -488,6 +490,8 @@ try {
   const histFields = JSON.parse(histText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
   assert.deepEqual(histFields.map((f) => [f.id.split(':').slice(1).join(':').replace(/\|f[^|]+\|/, '|IFRAME|'), f.kind, f.page, f.section]), [['w|p3.t3|IFRAME|0', 'richtext', 3, 'שולחן כתיבה']], `only the essay editor is a question: ${JSON.stringify(histFields)}`);
   assert.ok(histFields[0].question_text.includes('האם התקיימה או לא התקיימה הצבעה'), 'the editor carries the task question');
+  assert.deepEqual(histFields[0].table[0], ['מאפיין סיפור חניכה', 'הדגמה וביסוס'], 'the table in the editor is sent');
+  assert.equal(histFields[0].table.filter((r) => r[1] === '').length, 3, 'with its 3 empty cells');
   for (const t of ['אניטה שפירא', 'שאלה 4 (32 נקודות)', 'עמוד 3 מתוך 4 · לשונית "מפת מקורות"', 'סכנת הפלישה של צבאות ערב מוקטנת בעיני הבריטים', 'אחה"ב מתנגדת להכרזה']) assert.ok(histText.includes(t), `read: ${t}`);
   const histImages = requests.at(-1).body.messages[0].content.filter((c) => c.type === 'image');
   assert.ok(histImages.length >= 1, 'pictures of the activities sent');
@@ -495,12 +499,20 @@ try {
   assert.ok(!histText.includes('מייל של חבר'), 'share tab skipped');
   assert.deepEqual(await hist.evaluate(() => [window.__page, window.__tab]), [3, 3], 'back on page 3, writing desk');
   await hist.waitForSelector('#sab-helper-host >> .ahow >> text=להדביק בשולחן הכתיבה');
+  // the answer shows as a table: the row's text next to what goes in its cell
+  await hist.waitForSelector('#sab-helper-host >> .atable >> text=הדגמה וביסוס');
+  const shown = await hist.evaluate(() => [...document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.atable tbody tr')].map((tr) => [...tr.cells].map((c) => c.textContent)));
+  assert.deepEqual(shown[0], ['דמות משנה מבוגרת, דמות חונך', 'הדגמה לשורה 1'], `answers tab table: ${JSON.stringify(shown)}`);
   await hist.setViewportSize({ width: 1100, height: 760 });
   await shot(hist, '9-cet-history');
   assert.equal(await hist.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.chip.bad').length), 0, 'nothing marked missing');
   console.log('✓ CET history: pages then tabs, only the real question (no toolbar / "+ idea" boxes), nothing missing, "מה לעשות" shown');
   await hist.click('#sab-helper-host >> text=/מלא הכול בדף/');
-  await hist.waitForFunction(() => window.__vals.essay === 'תשובה לבדיקה', null, { timeout: 20000 });
+  // each answer went into its own cell, next to its row
+  await hist.waitForFunction(() => (window.__vals.essayHtml ?? '').includes('הדגמה לשורה 3'), null, { timeout: 20000 });
+  const cellsNow = await hist.evaluate(() => [...document.querySelector('#edframe').contentDocument.querySelectorAll('tr')].map((tr) => [...tr.cells].map((c) => c.textContent)));
+  assert.deepEqual(cellsNow.slice(1).map((r) => r[1]), ['הדגמה לשורה 1', 'הדגמה לשורה 2', 'הדגמה לשורה 3'], `cells filled: ${JSON.stringify(cellsNow)}`);
+  assert.equal(cellsNow[1][0], 'דמות משנה מבוגרת, דמות חונך', 'row texts kept');
   await hist.waitForFunction(() => window.__page === 3 && window.__tab === 3);
   console.log('✓ CET history: the essay is filled into the writing desk editor (an iframe), after going back to its page and tab');
   // diagnostic report

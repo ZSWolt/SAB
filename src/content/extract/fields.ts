@@ -239,8 +239,12 @@ function currentValue(group: FieldGroup): string {
       const sel = el as HTMLSelectElement;
       return sel.selectedIndex >= 0 ? normalize(sel.options[sel.selectedIndex].text) : '';
     }
-    case 'richtext':
+    case 'richtext': {
+      // a table with empty cells to fill is not an answer yet
+      const t = readTable(el);
+      if (t && t.rows.some((r) => r.some((c) => !c))) return '';
       return getText(el);
+    }
     case 'radio':
     case 'checkbox':
       return group.elements
@@ -253,9 +257,22 @@ function currentValue(group: FieldGroup): string {
   }
 }
 
+/** The first table in an editor, as cell texts ('' = empty), when it has cells to fill. */
+export function readTable(el: Element): { rows: string[][] } | null {
+  const table = el.querySelector('table');
+  if (!table) return null;
+  const rows = Array.from(table.rows)
+    .slice(0, 30)
+    .map((tr) => Array.from(tr.cells).slice(0, 8).map((td) => normalize(td.textContent ?? '')));
+  if (rows.length < 2 || !rows.some((r) => r.some((c) => !c))) return null;
+  return { rows };
+}
+
 export function describeFields(groups: FieldGroup[]): FieldInfo[] {
   return groups.map((g, pos) => {
     const info: FieldInfo = { id: g.id, kind: g.kind, context: fieldContext(g), pos };
+    const table = g.kind === 'richtext' ? readTable(g.elements[0]) : null;
+    if (table) info.table = table;
     if (g.optionLabels) info.options = g.optionLabels;
     const value = currentValue(g);
     if (value) info.value = value.slice(0, 500);

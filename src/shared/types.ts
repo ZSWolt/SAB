@@ -16,6 +16,15 @@ export interface FieldInfo {
   section?: string;
   /** Position among all the page's field groups (findFieldGroups), used to find it again when filling. */
   pos?: number;
+  /** A table inside an editor (a question to answer in a table): every cell's text, '' = empty. */
+  table?: { rows: string[][] };
+}
+
+/** One table cell to write, by row and column (0-based, header row included). */
+export interface TableCell {
+  row: number;
+  col: number;
+  text: string;
 }
 
 export interface StoryInfo {
@@ -77,6 +86,10 @@ export interface Answer {
   option: string | null;
   /** What to do on the page (drag this, paste there…), for activities without a text field. */
   how?: string | null;
+  /** For a table question: what goes in each empty cell. */
+  cells?: TableCell[] | null;
+  /** Filled in by the extension: the table's cell texts, to show the answer as a table. */
+  table?: string[][];
   /** Filled in by the extension from the page (not by Claude): the field's question and page. */
   questionText?: string;
   page?: number;
@@ -114,6 +127,8 @@ export interface FillItem {
   fieldId: string;
   value: string;
   option: string | null;
+  /** Table question: write these cells instead of replacing the editor's text. */
+  cells?: TableCell[] | null;
 }
 
 export interface FillOutcome {
