@@ -41,9 +41,11 @@ export function systemPrompt(settings: Settings): string {
 ${writingSection(settings)}
 
 ## איך לענות
+- **ההנחיה של התלמיד (student_note) קודמת לכל כלל אחר.** אם היא מצמצמת (רק שאלה 3, רק עמוד 2, רק מה שלא עניתי, בלי סעיף ב), תענה **רק** על מה שהיא מבקשת, ואל תוסיף תשובות לשאלות אחרות. שדה עם already_filled הוא שאלה שהתלמיד כבר ענה עליה.
 - תקרא את כל הדף. תמצא **כל** שאלה ו**כל** סעיף (א, ב, ג... / 1, 2, 3... / "הסבר", "הבא דוגמה", "נמק" וכו') ותענה על כולם. אל תדלג על שום חלק של שאלה – אם בשאלה יש כמה דרישות (למשל "הסבר ותן דוגמה"), התשובה צריכה לכלול את כולן.
 - אם יש סיפור/שיר/קטע קריאה או מסמך מצורף – התשובות בספרות צריכות להתבסס עליו: להפנות לאירועים ולדמויות, ולצטט ממנו כשזה מחזק את התשובה.
 - אם יש תיאור של סרטון (<video>) – תשתמש בו כמו שהיית משתמש בסרטון עצמו: לאירועים, לציטוטים ולזמנים.
+- question: המספר של השאלה **כמו שהוא כתוב במשימה** ("שאלה 4"), גם אם אתה עונה רק על חלק מהשאלות. אם לשאלה אין מספר במשימה, תכתוב את הכותרת שלה. page: מספר העמוד שבו השאלה נמצאת (לפי הכותרות === עמוד N ===), או null אם למשימה אין עמודים.
 - שאלות אמריקאיות: תבחר את האפשרות הנכונה ותכתוב ב-option את הנוסח **המדויק** שלה כמו שהוא מופיע בדף. ב-answer תכתוב נימוק של משפט אחד קצר בלבד.
 - שאלות עובדתיות (היסטוריה, תנ"ך, אזרחות, מדעים, תאריכים, מספרים, ציטוטים, פרטים על יצירות ויוצרים): ${SOURCES}
 - בחשבון, פיזיקה וכימיה: תפתור שלב אחרי שלב, תבדוק את התוצאה, ותכתוב בתשובה את הדרך בקצרה ואת התוצאה הסופית.
@@ -114,6 +116,8 @@ export interface PromptInput {
   missingVideos: { url: string; ok: boolean }[];
   previousPages: string;
   onlyFields?: string[];
+  /** Why only some fields: "missing" (complete the missing ones) or "empty" (the student answered the rest). */
+  onlyReason?: 'missing' | 'empty';
   screenshot?: string | null;
   /** Pictures of activities taken while walking the task's pages/tabs (CET). */
   images?: { label: string; dataUrl: string }[];
@@ -187,8 +191,12 @@ export function buildPageText(input: PromptInput): string {
 
   if (input.mode === 'review') {
     parts.push('תבדוק את התשובות שהתלמיד כתב (already_filled), ואז תקרא ל-submit_review.');
+  } else if (input.onlyFields?.length && input.onlyReason === 'empty') {
+    parts.push('התלמיד כבר ענה בעצמו על שאר השאלות. תענה **רק** על השדות שברשימה (על כל אחד מהם), בלי שאלות אחרות, ואז תקרא ל-submit_answers.');
   } else if (input.onlyFields?.length) {
     parts.push('בפעם הקודמת השדות שברשימה לא קיבלו תשובה. תענה **רק** עליהם (על כל אחד מהם), ואז תקרא ל-submit_answers.');
+  } else if (input.note.trim()) {
+    parts.push('תעשה בדיוק מה שכתוב ב-student_note. אם היא מגבילה לאילו שאלות לענות, תענה רק עליהן. רק אם היא לא מגבילה, תענה על כל השאלות והסעיפים שבמשימה. ואז תקרא ל-submit_answers.');
   } else {
     parts.push('תענה על כל השאלות והסעיפים שבמשימה, ואז תקרא ל-submit_answers.');
   }

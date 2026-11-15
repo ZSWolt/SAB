@@ -131,6 +131,10 @@ export interface SolveRequest {
   onlyFields?: string[];
   /** Solve again even if this page was already solved. */
   force?: boolean;
+  /** Answer only the fields the student hasn't filled yet. */
+  onlyEmpty?: boolean;
+  /** Set by the background: why only some fields are asked for. */
+  onlyReason?: 'missing' | 'empty';
 }
 
 export interface ReviewItem {

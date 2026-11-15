@@ -23,6 +23,11 @@ const send = <T = unknown>(msg: object): Promise<T> => {
 
 const CHOICE_KINDS = new Set(['radio', 'checkbox', 'select']);
 
+/** "תענה רק על השאלות שלא עניתי", "רק על הריקות", "רק מה שחסר"… */
+export function wantsOnlyEmpty(note: string): boolean {
+  return /(לא עניתי|שלא נענו|שעוד לא|שעדיין לא|ריקות|ריקים|השדות הריקים|רק מה שחסר|רק החסרות|רק את החסר)/.test(note);
+}
+
 export function summarizeScan(snaps: TaggedSnapshot[], opener: TaggedSnapshot[]): ScanSummary {
   const all = [...snaps, ...opener];
   const fields = snaps.flatMap((s) => s.fields);
@@ -53,7 +58,7 @@ export class Panel {
   private chatPort: chrome.runtime.Port | null = null;
   private store = createStore({ ...initialState(), storySite: isStorySite() });
   private lastTab: Tab | null = null;
-  private drafts: Drafts = { note: '', shot: false, manualStory: '', chat: '' };
+  private drafts: Drafts = { note: '', shot: false, onlyEmpty: false, manualStory: '', chat: '' };
   private port: chrome.runtime.Port | null = null;
   private prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)');
   private scannedOnce = false;
@@ -293,7 +298,9 @@ export class Panel {
       const cur = this.store.get();
       if (cur.busy) this.store.set({ busy: false, view: cur.result ? 'results' : 'idle', error: cur.error ?? 'העבודה נעצרה לפני שהסתיימה' });
     });
-    port.postMessage({ mode, note: this.drafts.note, manualStory: this.drafts.manualStory, screenshot, ...extra } satisfies SolveRequest);
+    // "only what I haven't answered": the checkbox, or the same thing written in the note
+    const onlyEmpty = mode === 'solve' && !extra.onlyFields && (this.drafts.onlyEmpty || wantsOnlyEmpty(this.drafts.note));
+    port.postMessage({ mode, note: this.drafts.note, manualStory: this.drafts.manualStory, screenshot, onlyEmpty, ...extra } satisfies SolveRequest);
   }
 
   private onPortMessage(m: PortMessage) {

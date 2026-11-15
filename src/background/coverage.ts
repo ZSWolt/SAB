@@ -47,6 +47,6 @@ export function enrich<T extends { field_id: string | null }>(items: T[], snaps:
   return items.map((it) => {
     const f = it.field_id ? map.get(it.field_id) : undefined;
     if (!f) return it;
-    return { ...it, questionText: questionLine(f.context), page: f.page, ...(f.section ? { section: f.section } : {}), ...(withValue && f.value ? { studentAnswer: f.value } : {}) };
+    return { ...it, questionText: questionLine(f.context), ...(f.page ? { page: f.page } : {}), ...(f.section ? { section: f.section } : {}), ...(withValue && f.value ? { studentAnswer: f.value } : {}) };
   });
 }

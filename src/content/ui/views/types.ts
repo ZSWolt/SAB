@@ -44,6 +44,8 @@ export interface Actions {
 export interface Drafts {
   note: string;
   shot: boolean;
+  /** Answer only the questions the student left empty. */
+  onlyEmpty: boolean;
   manualStory: string;
   chat: string;
 }

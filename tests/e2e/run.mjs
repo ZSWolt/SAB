@@ -392,6 +392,8 @@ try {
   assert.deepEqual(await page.evaluate(() => window.__state), { 1: 'תשובה לבדיקה', 2: 'עגנון', 3: '1966' });
   await page.waitForFunction(() => window.__cur === 2);
   console.log('✓ paged task: filled answers on every page (text, radio, input) and returned to page 2');
+  await page.waitForSelector('#sab-helper-host >> .answers .qpage >> text=עמוד 2');
+  console.log('✓ answers tab shows the page of each question');
 
   await page.goto(`http://localhost:${port}/task.html?attempt=7`);
   await page.waitForSelector('#sab-helper-host', { state: 'attached' });
@@ -512,6 +514,38 @@ try {
   assert.ok(!JSON.stringify(report).includes('תשובה לבדיקה'), 'no answer text in the report');
   console.log('✓ diagnostic report: outline, what was read on each page/tab, numbering, no answer text');
   await hist.close();
+
+  // "only the questions I haven't answered": the checkbox, and the same words in the note
+  const part = await ctx.newPage();
+  await part.goto(`http://localhost:${port}/task.html?attempt=55`);
+  await part.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await part.fill('#q1', 'כתבתי בעצמי');
+  await part.keyboard.press('Alt+Shift+S');
+  await part.waitForSelector('#sab-helper-host >> text=רק שאלות שעוד לא עניתי עליהן');
+  await part.click('#sab-helper-host >> label.check >> text=רק שאלות שעוד לא עניתי עליהן');
+  await part.click('#sab-helper-host >> .btn.primary.big');
+  await part.waitForSelector('#sab-helper-host >> .rl >> text=2/2', { timeout: 20000 });
+  const partText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
+  const partFields = JSON.parse(partText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
+  assert.ok(!partFields.some((f) => (f.question_text ?? '').includes('תאר את דמות הכלה')), 'the question the student answered is not sent');
+  assert.equal(partFields.length, 2);
+  assert.ok(partText.includes('התלמיד כבר ענה בעצמו על שאר השאלות'));
+  assert.equal(await part.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.chip.bad').length), 0, 'the answered question is not "missing"');
+  console.log('✓ "only the questions I haven\'t answered" (checkbox): only the empty fields are sent, nothing marked missing');
+  // the same page again, now with the request written in the note: a new request, not the saved answers
+  const beforeNote = requests.length;
+  await part.click('#sab-helper-host >> .tabbar >> text=לוח');
+  await part.click('#sab-helper-host >> label.check >> text=רק שאלות שעוד לא עניתי עליהן'); // off
+  await part.fill('#sab-helper-host >> textarea[aria-label="הערה ל-Claude"]', 'תענה רק על השאלות שלא עניתי עליהם');
+  await part.click('#sab-helper-host >> .btn.primary.big');
+  await part.waitForSelector('#sab-helper-host >> .rl >> text=/\\d\\/\\d/', { timeout: 20000 });
+  await part.waitForFunction((n) => true, beforeNote);
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.ok(requests.length > beforeNote, 'a note means a new request, not the saved answers');
+  const noteText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
+  assert.ok(noteText.includes('<student_note>') && noteText.includes('התלמיד כבר ענה בעצמו על שאר השאלות'), 'the note is understood as "only empty"');
+  console.log('✓ the same request written in the note works, and is never answered from the saved answers');
+  await part.close();
 
   // a long task on a site that isn't classe: no story is picked up, and the answers tab scrolls
   const many = await ctx.newPage();

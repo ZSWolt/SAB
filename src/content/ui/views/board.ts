@@ -44,6 +44,9 @@ function idle(s: UIState, a: Actions, d: Drafts): Rendered {
   const note = h('textarea', { placeholder: 'הערה ל-Claude, למשל רק שאלה 3 או באנגלית', 'aria-label': 'הערה ל-Claude', style: 'min-height:56px' }) as HTMLTextAreaElement;
   note.value = d.note;
   note.addEventListener('input', () => (d.note = note.value));
+  const empty = h('input', { type: 'checkbox' }) as HTMLInputElement;
+  empty.checked = d.onlyEmpty;
+  empty.addEventListener('change', () => (d.onlyEmpty = empty.checked));
   const shot = h('input', { type: 'checkbox' }) as HTMLInputElement;
   shot.checked = d.shot;
   shot.addEventListener('change', () => (d.shot = shot.checked));
@@ -57,6 +60,7 @@ function idle(s: UIState, a: Actions, d: Drafts): Rendered {
       lastWork(s, a),
       scanCard(s, a),
       h('label', { class: 'field' }, 'הערה ל-Claude', note),
+      h('label', { class: 'check' }, empty, 'רק שאלות שעוד לא עניתי עליהן'),
       h('label', { class: 'check' }, shot, 'צרף צילום מסך לשאלות עם תמונה או גרף'),
     ],
   };

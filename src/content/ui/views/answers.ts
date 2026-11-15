@@ -13,7 +13,10 @@ export { questionLabel };
 
 const qbadge = (label: string) => h('span', { class: 'qbadge' }, label);
 /** Where the question is: its section tab (CET "שולחן כתיבה") or its page. */
-const where = (x: { page?: number; section?: string }) => (x.section || x.page ? h('span', { class: 'qpage' }, x.section ?? `עמוד ${x.page}`) : null);
+const where = (x: { page?: number; section?: string }) => {
+  const t = [x.page ? `עמוד ${x.page}` : '', x.section ?? ''].filter(Boolean).join(' · ');
+  return t ? h('span', { class: 'qpage' }, t) : null;
+};
 
 // ---------- answer status ----------
 

@@ -387,7 +387,15 @@ chrome.runtime.onConnect.addListener((port) => {
       }
 
       // --- already solved this exact page? show it for free ---
-      const solvedPage = req.mode === 'solve' && !req.force && !req.onlyFields?.length ? findPage(task, hash) : null;
+      // "only what I haven't answered": the fields the student left empty (not trusting the model with it)
+      if (req.mode === 'solve' && req.onlyEmpty && !req.onlyFields?.length) {
+        const empty = snaps.flatMap((s) => s.fields.filter((f) => !f.value?.trim()).map((f) => `${s.frameId}:${f.id}`));
+        if (!empty.length) throw new SolveError('כל השאלות שיש להן שדה כבר מלאות. אם צריך משהו אחר, כתוב את זה בהערה ל-Claude.');
+        req.onlyFields = empty;
+        req.onlyReason = 'empty';
+      }
+      // a note or "only empty" is a new request: never answer it with the saved answers
+      const solvedPage = req.mode === 'solve' && !req.force && !req.onlyFields?.length && !req.note.trim() ? findPage(task, hash) : null;
       if (solvedPage) {
         const results = await getMap<unknown>('results');
         results[tabId] = solvedPage.result;
@@ -470,6 +478,7 @@ chrome.runtime.onConnect.addListener((port) => {
         missingVideos: videoStatus,
         previousPages: req.mode === 'solve' ? previousPagesSummary(task, hash) : '',
         onlyFields: req.onlyFields,
+        onlyReason: req.onlyReason ?? 'missing',
         screenshot: req.screenshot,
         images: walkImages.get(tabId) ?? [],
       });
@@ -511,7 +520,8 @@ chrome.runtime.onConnect.addListener((port) => {
 
       const results = await getMap<SolveResult>('results');
       if (req.onlyFields?.length && results[tabId]) result = mergeResults(results[tabId], result);
-      Object.assign(result, checkCoverage(snaps, result));
+      // with "only empty", the fields the student answered are not missing
+      Object.assign(result, checkCoverage(snaps, result, req.onlyReason === 'empty' ? req.onlyFields : undefined));
       results[tabId] = result;
       await chrome.storage.session.set({ results });
       await savePage(

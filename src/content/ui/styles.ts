@@ -97,7 +97,7 @@ svg { flex: none; display: block; }
 .qline { display: flex; align-items: center; gap: 8px; }
 .qbadge { font-size: 12px; line-height: 20px; font-weight: 500; padding: 0 8px; border-radius: 6px; background: var(--raised); color: var(--text); white-space: nowrap; }
 .item.missing .qbadge { color: var(--neg); }
-.qpage { font-size: 11px; color: var(--muted); }
+.qpage { font-size: 11px; line-height: 18px; color: var(--text2); background: var(--raised); border-radius: 6px; padding: 0 6px; white-space: nowrap; }
 /* "what was found on the page" */
 .card.scan { overflow: hidden; }
 .scan-row { display: flex; align-items: center; }

@@ -55,12 +55,26 @@ describe('chat content', () => {
       'answer:1:שאלה 1 · ב',
       'missing:0:שאלה 2',
       'answer:0:שאלה 3',
-      'answer:3:שאלה 5', // page 2 restarts at 1 → gets its place instead of a repeated label
-      'answer:4:שאלה 6', // no number: stays right after the row before it (on page 2)
+      'answer:3:שאלה 1', // page 2 restarts at 1: the task's own number, the page shows next to it
+      'answer:4:#6', // no number in the task: no made-up number; stays after the row before it (page 2)
     ]);
     expect(questionNumber('ב׳')).toBe(2);
     expect(questionNumber('שאלה ד')).toBe(4);
     expect(questionNumber('הסבר')).toBeUndefined();
+    // a page heading or a date is not a question number
+    expect(questionNumber('עמוד 3 - היתה או לא היתה הצבעה - מה העמדה שלי')).toBeUndefined();
+    expect(questionNumber('15.5.1948 הבריטים עוזבים')).toBeUndefined();
+    expect(questionNumber('4. מה הייתה הטענה?')).toBe(4);
+  });
+
+  it('labels use the number written in the task, also when only some questions are answered', () => {
+    const rows = orderedRows([
+      { question: 'שאלה 4', part: '', page: 2 },
+      { question: 'עמוד 3 - מה העמדה שלי', part: '', page: 3, questionText: 'שאלה 7: מה העמדה שלך?' },
+      { question: 'שאלה 2', part: '', page: 2, questionText: 'שאלה 2 (10 נקודות)' },
+      { question: 'שאלה 2', part: '', page: 3 },
+    ]);
+    expect(rows.map((r) => r.label)).toEqual(['שאלה 2', 'שאלה 4', 'שאלה 2 (עמוד 3)', 'שאלה 7']);
   });
 
   it('never gives two answers the same number', () => {
@@ -107,5 +121,27 @@ describe('chat content', () => {
 describe('defaults', () => {
   it('the dashboard look (school) is the default theme', () => {
     expect(DEFAULT_SETTINGS.theme).toBe('school');
+  });
+});
+
+import { buildPageText } from '../../src/ai/prompt';
+import { wantsOnlyEmpty } from '../../src/content/ui/panel';
+
+describe('the student note comes first', () => {
+  const base = { mode: 'solve' as const, snaps: [snap], opener: [], stories: [], pdfs: [], videos: [], missingVideos: [], previousPages: '' };
+  it('a note replaces "answer every question" with "do what the note says"', () => {
+    const text = buildPageText({ ...base, note: 'רק שאלה 3' });
+    expect(text).toContain('<student_note>\nרק שאלה 3');
+    expect(text).toContain('תעשה בדיוק מה שכתוב ב-student_note');
+    expect(text.trim().endsWith('תענה על כל השאלות והסעיפים שבמשימה, ואז תקרא ל-submit_answers.')).toBe(false);
+  });
+  it('"only empty" asks for the listed fields only', () => {
+    const text = buildPageText({ ...base, note: '', onlyFields: ['0:f1'], onlyReason: 'empty' });
+    expect(text).toContain('התלמיד כבר ענה בעצמו על שאר השאלות');
+  });
+  it('recognizes "only what I didn\'t answer" in the note', () => {
+    expect(wantsOnlyEmpty('תענה רק על השאלות שלא עניתי עליהם')).toBe(true);
+    expect(wantsOnlyEmpty('רק על הריקות')).toBe(true);
+    expect(wantsOnlyEmpty('תענה באנגלית')).toBe(false);
   });
 });
