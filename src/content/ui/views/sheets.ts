@@ -78,7 +78,7 @@ export function storyTab(s: UIState, a: Actions, d: Drafts): Rendered {
       story
         ? h('article', { class: 'card story' }, story.title ? h('h2', {}, story.title) : null, story.text)
         : s.storySite
-          ? h('div', { class: 'card story empty' }, s.scanning ? 'מחפש את הסיפור' : 'עוד לא זוהה סיפור. אפשר לפתוח את בר הסיפור, לבחור אותו בדף, או להדביק אותו למטה')
+          ? h('div', { class: 'card story empty' }, s.scanning ? 'מחפש את הסיפור' : 'עוד לא זוהה סיפור. ב-classe הסיפור נמצא בבר בצד ימין: אפשר לפתוח אותו (גם אני פותח אותו לבד כשפותרים), או להוסיף קובץ למטה')
           : h('div', { class: 'card story empty' }, 'זיהוי אוטומטי של סיפור פועל רק בספרות, ב-classe. כאן אפשר לבחור סיפור בדף, להוסיף קבצים או להדביק אותו למטה, והוא יישלח יחד עם השאלות'),
       h(
         'div',

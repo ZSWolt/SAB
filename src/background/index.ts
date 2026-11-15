@@ -412,16 +412,30 @@ chrome.runtime.onConnect.addListener((port) => {
       if (!hasText) throw new SolveError('לא הצלחתי לקרוא כלום מהדף. תרענן את הדף ותנסה שוב.');
 
       // --- story & documents: from this page, or remembered from an earlier page of the task ---
-      let stories = collectStories(snaps, opener, req.manualStory);
       // files the student added in the story tab: Word / text become story text; PDFs and pictures go as they are
       const files = req.storyFiles ?? [];
+      // classe: the story is in the bar on the right. If it wasn't found (the bar is closed and its
+      // text isn't on the page yet), open the bar and read again. Not when the student gave the story.
+      const top0 = snaps.find((s) => s.isTop) ?? snaps[0];
+      if (top0?.adapter === 'classe' && !snaps.some((s) => s.story) && !files.length && !req.manualStory.trim()) {
+        const opened = await inAllFrames<string | null>(tabId, '__sabOpenStory').catch(() => []);
+        if (opened.some((r) => r.result)) {
+          await new Promise((r) => setTimeout(r, 1500));
+          const again = await inAllFrames<FrameSnapshot>(tabId, '__sabExtract', [{ allPages: false }]).catch(() => []);
+          const found = again.find((r) => r.result.story)?.result.story;
+          if (found && top0) top0.story = found;
+        }
+      }
+      let stories = collectStories(snaps, opener, req.manualStory);
+      // a file the student added IS the story: it replaces whatever the page seemed to have
+      if (files.length) stories = collectStories([], [], req.manualStory);
       const fileStories = files.filter((f) => f.kind === 'text' && f.text?.trim()).map((f) => ({ title: f.name.replace(/\.[^.]+$/, ''), text: f.text!.trim() }));
       const filePdfs = files.filter((f) => f.kind === 'pdf' && f.base64).map((f) => ({ title: f.name, base64: f.base64! }));
       const fileImages = files.filter((f) => f.kind === 'image' && f.base64).map((f) => ({ label: f.name, dataUrl: `data:${f.mime ?? 'image/jpeg'};base64,${f.base64}` }));
       stories = [...fileStories.filter((f) => !stories.some((s) => s.text === f.text)), ...stories];
       let docRefs = uniqueDocs(snaps, opener, tabUrl);
       let storyFromMemory = false;
-      if (!stories.length && !docRefs.length && task && (task.stories.length || task.documents.length)) {
+      if (!stories.length && !docRefs.length && !files.length && task && (task.stories.length || task.documents.length)) {
         stories = task.stories;
         docRefs = task.documents;
         storyFromMemory = true;

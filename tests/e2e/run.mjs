@@ -145,7 +145,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/pdf' });
     return res.end('%PDF-1.4\n% fake story pdf for the test\n%%EOF');
   }
-  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
+  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/classe.html': 'classe.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
   if (!file) return res.writeHead(404).end();
   let html = readFileSync(resolve('tests/fixtures', file), 'utf8');
   // the iframe is served from another origin (127.0.0.1 vs localhost) to test cross-origin frames
@@ -574,6 +574,20 @@ try {
   assert.ok(noteText.includes('<student_note>') && noteText.includes('התלמיד כבר ענה בעצמו על שאר השאלות'), 'the note is understood as "only empty"');
   console.log('✓ the same request written in the note works, and is never answered from the saved answers');
   await part.close();
+
+  // classe: the story is only in the green bar on the right; a closed bar is opened before reading
+  const cls = await ctx.newPage();
+  await cls.goto(`http://localhost:${port}/classe.html`);
+  await cls.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await cls.keyboard.press('Alt+Shift+A');
+  await cls.waitForSelector('#sab-helper-host >> .rl >> text=1/1', { timeout: 30000 });
+  const clsContent = requests.at(-1).body.messages[0].content;
+  const storyText = clsContent.find((c) => c.type === 'text' && c.text.includes('<story'))?.text ?? '';
+  assert.ok(storyText.includes('יואב ישב באוטובוס'), 'the story from the bar on the right');
+  assert.ok(!storyText.includes('הסבר ארוך על הסופר'), 'the long intro text is not the story');
+  assert.equal(await cls.evaluate(() => window.__opened), 1, 'the closed bar was opened once');
+  console.log('✓ classe: the story comes only from the bar on the right (opened by itself when closed), not from other text');
+  await cls.close();
 
   // a question left without an answer is completed automatically in the same solve
   skipIframeField = 1;

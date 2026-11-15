@@ -17,7 +17,7 @@ export function detectAdapter(loc: Location = location): string {
   if (host === 'classroom.google.com') return 'google-classroom';
   if (host === 'docs.google.com') return 'google-docs';
   if (host.endsWith('cet.ac.il')) return 'cet';
-  if (host.endsWith('classe.world')) return 'classe';
+  if (host.endsWith('classe.world') || document.querySelector('meta[name="sab-story-site"]:not([content="loose"])')) return 'classe';
   if (host.includes('ofek')) return 'ofek';
   if (document.querySelector('body#page-mod-quiz-attempt, .que .qtext, body.path-mod')) return 'moodle';
   return 'generic';
@@ -50,6 +50,12 @@ export function isStorySite(doc: Document = document, loc: Location = location):
   }
 }
 
+/** classe: the story is only ever in the bar on the right (not "loose" test pages). */
+function storyInRightBarOnly(doc: Document): boolean {
+  if (STORY_HOST.test(location.hostname)) return true;
+  return doc.querySelector('meta[name="sab-story-site"]')?.getAttribute('content') !== 'loose';
+}
+
 /** Reads this frame: answer fields with their question text, the story (if any) and the page text. */
 export function extractFrame(doc: Document = document): FrameSnapshot {
   const isTop = window === window.top;
@@ -65,7 +71,7 @@ export function extractFrame(doc: Document = document): FrameSnapshot {
   const found = manual && manual.isConnected
     ? { info: { text: getText(manual), source: 'manual' }, element: manual }
     : isStorySite(doc)
-      ? findStory(doc, isTop)
+      ? findStory(doc, isTop, storyInRightBarOnly(doc))
       : null;
 
   const fullText = doc.body

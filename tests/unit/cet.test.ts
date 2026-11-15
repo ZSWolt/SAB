@@ -40,7 +40,7 @@ function page() {
 }
 
 beforeEach(() => {
-  if (!document.head.querySelector('meta[name="sab-story-site"]')) document.head.insertAdjacentHTML('beforeend', '<meta name="sab-story-site">');
+  if (!document.head.querySelector('meta[name="sab-story-site"]')) document.head.insertAdjacentHTML('beforeend', '<meta name="sab-story-site" content="loose">');
   (window as any).__sabCounter = 0;
   page();
 });

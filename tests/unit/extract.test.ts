@@ -127,3 +127,22 @@ describe('story side bar', () => {
     expect(extractFrame().story).toBeUndefined();
   });
 });
+
+describe('classe: the story is only in the bar on the right', () => {
+  beforeEach(() => storySite(true));
+
+  it('takes the bar, not a long text in the middle of the page', () => {
+    page(`
+      <main><h1>מבוא לשיעור</h1><div class="intro">${'הסבר ארוך על הסופר ועל התקופה, לא הסיפור. '.repeat(60)}</div>
+        <p>שאלה 1: מה עשה הגיבור?</p><textarea></textarea></main>
+      <div class="story-panel" hidden><h3>הנסיעה לסבא</h3><div>${LONG}</div></div>`);
+    const snap = extractFrame();
+    expect(snap.story?.title).toBe('הנסיעה לסבא');
+    expect(snap.story?.text).not.toContain('הסבר ארוך על הסופר');
+  });
+
+  it('no bar: no story (even with a long text on the page)', () => {
+    page(`<main><div class="intro">${'הסבר ארוך על הסופר ועל התקופה, לא הסיפור. '.repeat(60)}</div><p>שאלה 1</p><textarea></textarea></main>`);
+    expect(extractFrame().story).toBeUndefined();
+  });
+});
