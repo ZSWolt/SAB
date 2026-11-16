@@ -127,6 +127,21 @@ describe('defaults', () => {
 import { buildPageText } from '../../src/ai/prompt';
 import { wantsOnlyEmpty } from '../../src/content/ui/panel';
 
+describe('the chat answers questions', () => {
+  it('a question gets an answer in words; only an explicit request changes answers', () => {
+    const p = chatSystemPrompt(DEFAULT_SETTINGS);
+    expect(p).toContain('שאלה מקבלת תשובה במילים, בלי לשנות שום תשובה');
+    expect(p).toContain('update_answers **רק** כשהתלמיד מבקש במפורש');
+  });
+  it('sends what the student wrote in the fields', () => {
+    const s2 = { ...snap, fields: [{ id: 'f1', kind: 'textarea', context: 'שאלה 1: מי?', value: 'כמו שכתוב "אחים שלנו"' }] } as unknown as TaggedSnapshot;
+    const [first] = buildChatContent({ snaps: [s2], stories: [], result, previousPages: '' }, [{ role: 'user', text: 'התשובה שלי כוללת ציטוטים?' }]);
+    const text = (first.content as { text?: string }[]).map((c) => c.text ?? '').join('\n');
+    expect(text).toContain('<student_wrote');
+    expect(text).toContain('כמו שכתוב "אחים שלנו"');
+  });
+});
+
 describe('fixed instructions from the settings', () => {
   it('lead the chat instructions and apply to every chat reply', () => {
     const p = chatSystemPrompt({ ...DEFAULT_SETTINGS, extraInstructions: 'תמיד תענה באנגלית' });

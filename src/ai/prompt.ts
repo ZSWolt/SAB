@@ -1,5 +1,6 @@
 import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { orderedRows } from '../shared/labels';
+import { questionLine } from '../background/coverage';
 import type { Settings } from '../shared/settings';
 import type { ChatMessage, SolveResult, TaggedSnapshot } from '../shared/types';
 import type { BetaMessageParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
@@ -282,7 +283,9 @@ export function chatSystemPrompt(settings: Settings): string {
 ${fixedRules(settings)}${writingSection(settings)}
 
 ## איך לענות בשיחה
-- תענה קצר וענייני, כמו חבר טוב שמבין בחומר. בלי הקדמות.
+- אתה צ'אט רגיל עם AI: עונים על מה שהתלמיד שואל. תענה קצר וענייני, כמו חבר טוב שמבין בחומר. בלי הקדמות.
+- **שאלה מקבלת תשובה במילים, בלי לשנות שום תשובה.** למשל: "התשובה שלי כוללת ציטוטים?", "זה נכון?", "מה חסר בתשובה 2?", "למה בחרת באפשרות הזאת?", "על מה הסיפור?", "מה זה אומר...?". תבדוק בעצמך (בתשובות שב-current_answers, במה שהתלמיד כתב ב-student_wrote ובטקסט) ותענה ישירות: כן/לא, ומה בדיוק. אם יש מה לשפר, תציע במשפט ("רוצה שאוסיף ציטוט?") ואל תשנה לבד.
+- update_answers **רק** כשהתלמיד מבקש במפורש לשנות או לכתוב תשובה: "תקצר", "תאריך", "תוסיף ציטוט", "תנסח מחדש", "תתקן", "תתרגם", "תענה על שאלה 5", "כן, תוסיף".
 - "תסביר", "למה", "על מה הסיפור": תסביר בפשטות, עם דוגמה מהטקסט כשזה עוזר. אל תשנה תשובות.
 - התשובות שכבר נפתרו נמצאות ב-current_answers, כל אחת עם label כמו שהתלמיד רואה אותה בלשונית התשובות ("שאלה 3"). כשהוא כותב "תשובה 3", "שאלה 3", "הראשונה" או "האחרונה", הוא מתכוון לפריט עם ה-label הזה או למיקום הזה ברשימה. אל תפתור מחדש ואל תשאל איזו תשובה: תתבסס על התשובה שכבר כתובה שם.
 - בקשה לשנות תשובה (לקצר, להאריך, לנסח אחרת, לתרגם, לתקן, להשלים שאלה חסרה): תקרא לכלי update_answers עם התשובות החדשות בלבד. כל אחת עם אותו field_id, אותו question ואותו part של התשובה המקורית מ-current_answers (או מרשימת השדות כשאין עדיין תשובה, או null אם אין שדה). בטקסט תכתוב משפט אחד על מה שינית, ותזכיר את מספר השאלה.
@@ -304,6 +307,9 @@ function chatContextText(c: ChatContext): string {
   for (const s of c.snaps) {
     if (s.fullText.trim()) parts.push(`<frame id="${s.frameId}" url="${attr(s.url)}">\n${cut(s.fullText, 30000)}\n</frame>`);
   }
+  // what the student typed in the fields, so questions like "does my answer quote the text?" can be answered
+  const wrote = c.snaps.flatMap((s) => s.fields.filter((f) => f.value?.trim()).map((f) => `${questionLine(f.context)}\n${cut(f.value!, 3000)}`));
+  if (wrote.length) parts.push(`<student_wrote note="מה שהתלמיד כתב בעצמו בשדות של הדף">\n${wrote.join('\n\n')}\n</student_wrote>`);
   // once solved, the answers carry the field ids to use (page-walk ids); before that, list the fields
   if (!c.result?.answers.length) {
     const fields = fieldList(c.snaps);

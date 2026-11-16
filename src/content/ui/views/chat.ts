@@ -32,7 +32,7 @@ function intro(s: UIState): string {
   const sc = s.scan;
   if (s.result) {
     const missing = s.result.missing?.length ?? 0;
-    return `התשובות למשימה מוכנות${missing ? `, ו${plural(missing, 'שאלה אחת חסרה', 'שאלות חסרות')}` : ''}. אפשר לבקש ממני לקצר, להסביר, לתרגם או לשנות תשובה, ואני אעדכן אותה גם בלשונית תשובות`;
+    return `התשובות למשימה מוכנות${missing ? `, ו${plural(missing, 'שאלה אחת חסרה', 'שאלות חסרות')}` : ''}. אפשר לשאול אותי כל שאלה, למשל אם יש ציטוטים בתשובה או למה בחרתי משהו. אם תבקש לשנות תשובה (לקצר, להוסיף, לתרגם), אעדכן אותה גם בלשונית תשובות`;
   }
   if (sc && sc.fields) {
     return `מצאתי במשימה ${plural(sc.fields, 'שאלה אחת', 'שאלות')}${sc.pages > 1 ? ` ב-${sc.pages} עמודים` : ''}${sc.story ? `, ואת הסיפור "${(sc.story.title ?? '').slice(0, 40)}"` : ''}. אפשר לשאול אותי על המשימה, או לבקש שאפתור אותה`;
@@ -72,6 +72,7 @@ export function chatView(s: UIState, a: Actions, d: Drafts): Rendered {
     ? [
         ...(s.result.missing?.length ? [h('button', { type: 'button', class: 'qchip primary', onclick: ask('תשלים את השאלות שחסרות') }, 'השלם את החסר')] : []),
         h('button', { type: 'button', class: 'qchip', onclick: ask('תקצר את כל התשובות, אבל שעדיין יענו על כל השאלה') }, 'תקצר את כל התשובות'),
+        h('button', { type: 'button', class: 'qchip', onclick: ask('יש ציטוטים מהטקסט בתשובות? באילו כן ובאילו לא?') }, 'יש ציטוטים בתשובות?'),
         h('button', { type: 'button', class: 'qchip', onclick: ask('תסביר לי את התשובה לשאלה 1') }, 'תסביר לי את שאלה 1'),
         h('button', { type: 'button', class: 'qchip', onclick: ask('תתרגם את התשובות לאנגלית') }, 'באנגלית'),
       ]
