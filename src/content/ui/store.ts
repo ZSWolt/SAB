@@ -20,6 +20,8 @@ export interface ScanSummary {
   open: number;
   choice: number;
   questions: { text: string; page?: number; kind: FieldKind }[];
+  /** The page's main heading. */
+  topic: string;
 }
 
 export type ThemeName = 'notebook' | 'focus' | 'school';

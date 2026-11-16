@@ -26,7 +26,7 @@ const ANSWER_TOOL: BetaToolUnion = {
   input_schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['answers', 'sources', 'notes', 'skipped'],
+    required: ['answers', 'sources', 'notes', 'skipped', 'topic'],
     properties: {
       answers: {
         type: 'array',
@@ -76,6 +76,7 @@ const ANSWER_TOOL: BetaToolUnion = {
         },
       },
       notes: { type: 'string', description: 'הערות קצרות לתלמיד (מה לא היה ברור). מחרוזת ריקה אם אין.' },
+      topic: { type: 'string', description: 'הנושא של היחידה/המשימה בשורה אחת, ואחריה (בשורה חדשה) משפט או שניים על מה היא עוסקת ומה חשוב לדעת.' },
       skipped: {
         type: 'array',
         description: 'שדות מהרשימה שהם לא שאלה (שם, כיתה, תיבת רעיון, חיפוש) ולכן אין להם תשובה. ריק אם כל השדות נענו.',
@@ -234,7 +235,7 @@ export function parseReview(input: unknown): { items: ReviewItem[]; overall: str
 }
 
 /** Validates the tool input: the streamed JSON can come back cut off. */
-export function parseAnswers(input: unknown): { answers: Answer[]; sources: Source[]; notes: string; skipped: { field_id: string; reason: string }[] } | null {
+export function parseAnswers(input: unknown): { answers: Answer[]; sources: Source[]; notes: string; skipped: { field_id: string; reason: string }[]; topic: string } | null {
   const x = input as Record<string, unknown>;
   if (!x || !Array.isArray(x.answers) || !x.answers.every(isAnswer)) return null;
   const sources = Array.isArray(x.sources)
@@ -243,7 +244,7 @@ export function parseAnswers(input: unknown): { answers: Answer[]; sources: Sour
   const skipped = Array.isArray(x.skipped)
     ? (x.skipped as { field_id: string; reason: string }[]).filter((s) => s && typeof s.field_id === 'string').map((s) => ({ field_id: s.field_id, reason: String(s.reason ?? '') }))
     : [];
-  return { answers: x.answers, sources, notes: typeof x.notes === 'string' ? x.notes : '', skipped };
+  return { answers: x.answers, sources, notes: typeof x.notes === 'string' ? x.notes : '', skipped, topic: typeof x.topic === 'string' ? x.topic.trim() : '' };
 }
 
 function cost(model: string, usage: BetaUsage | undefined, searches: number): number {

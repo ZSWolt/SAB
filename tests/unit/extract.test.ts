@@ -146,3 +146,18 @@ describe('classe: the story is only in the bar on the right', () => {
     expect(extractFrame().story).toBeUndefined();
   });
 });
+
+import { pageTopic } from '../../src/content/extract';
+
+describe('the topic of the page', () => {
+  it('is the main heading, not a button or the site name', () => {
+    document.title = 'משימה | מטח';
+    page(`<header><button><h1>תפריט</h1></button><h1>מטח</h1></header><main><h1>הדיון על הכרזת העצמאות</h1></main>`);
+    expect(pageTopic()).toBe('הדיון על הכרזת העצמאות');
+  });
+  it('falls back to the tab title without the site name', () => {
+    document.title = 'תיאטרון ביוון העתיקה | מטח';
+    page(`<p>טקסט</p>`);
+    expect(pageTopic()).toBe('תיאטרון ביוון העתיקה');
+  });
+});

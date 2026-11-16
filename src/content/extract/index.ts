@@ -56,6 +56,20 @@ function storyInRightBarOnly(doc: Document): boolean {
   return doc.querySelector('meta[name="sab-story-site"]')?.getAttribute('content') !== 'loose';
 }
 
+/** The page's main heading (the unit / task topic): an h1, a header title or an h2; else the tab title. */
+export function pageTopic(doc: Document = document): string {
+  const ok = (t: string) => t.length >= 4 && t.length <= 120 && !/^(מטח|מט"ח|classe|moodle|google)$/i.test(t);
+  for (const sel of ['h1', 'header [class*="title" i], [class*="header" i] [class*="title" i], header h2, [class*="heading" i]', 'h2']) {
+    for (const el of Array.from(doc.querySelectorAll(sel))) {
+      if (el.closest('#sab-helper-host, button, a, nav') || !isRendered(el)) continue;
+      const t = getText(el).replace(/\s+/g, ' ').trim();
+      if (ok(t)) return t;
+    }
+  }
+  const title = doc.title.split(/\s+[|·–-]\s+/)[0].trim();
+  return ok(title) ? title : '';
+}
+
 /** Reads this frame: answer fields with their question text, the story (if any) and the page text. */
 export function extractFrame(doc: Document = document): FrameSnapshot {
   const isTop = window === window.top;
@@ -85,6 +99,7 @@ export function extractFrame(doc: Document = document): FrameSnapshot {
   return {
     url: location.href,
     title: doc.title,
+    topic: isTop ? pageTopic(doc) || undefined : undefined,
     isTop,
     adapter,
     fields,

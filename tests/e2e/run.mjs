@@ -106,7 +106,7 @@ function mockAnswer(body) {
       answers.push({ how: 'גרור 👍 לכרטיס של ישראל גלילי', cells: null, question: `שאלה ${n}`, part: '', answer: 'הטענה שלו תומכת בהכרזה', field_id: null, option: null, page: 2 });
     }
   }
-  const input = JSON.stringify({ answers, sources: [{ title: 'פרס נובל', url: 'https://www.nobelprize.org/' }], notes: '' });
+  const input = JSON.stringify({ answers, sources: [{ title: 'פרס נובל', url: 'https://www.nobelprize.org/' }], notes: '', skipped: [], topic: 'נושא מהבדיקה\nהסבר קצר על היחידה' });
   return [
     { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: body.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1000, output_tokens: 1 } } },
     { type: 'content_block_start', index: 0, content_block: { type: 'server_tool_use', id: 'srvtoolu_1', name: 'web_search', input: {} } },
@@ -596,6 +596,9 @@ try {
   assert.ok(storyText.includes('יואב ישב באוטובוס'), 'the story from the bar on the right');
   assert.ok(!storyText.includes('הסבר ארוך על הסופר'), 'the long intro text is not the story');
   assert.equal(await cls.evaluate(() => window.__opened), 1, 'the closed bar was opened once');
+  await cls.click('#sab-helper-host >> .tabbar >> text=סיפור');
+  await cls.waitForSelector('#sab-helper-host >> article.story');
+  assert.equal(await cls.evaluate(() => !!document.querySelector('#sab-helper-host').shadowRoot.querySelector('.card.topic')), false, 'a story was found: no topic card');
   console.log('✓ classe: the story comes only from the bar on the right (opened by itself when closed), not from other text');
   await cls.close();
 
@@ -650,6 +653,8 @@ try {
   assert.ok(!(await many.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelector('.scan-head .ss').textContent)).includes('סיפור'), 'no story off classe');
   await many.click('#sab-helper-host >> .tabbar >> text=סיפור');
   await many.waitForSelector('#sab-helper-host >> text=/זיהוי אוטומטי של סיפור פועל רק בספרות/');
+  await many.waitForSelector('#sab-helper-host >> .card.topic >> text=משימה ארוכה, לא ב-classe');
+  console.log('✓ story tab: "נושא" from the page heading when there is no story');
   assert.equal(await many.isVisible('#sab-helper-host >> text=פתח את בר הסיפור'), false);
   console.log('✓ off classe: no automatic story, the story tab offers pick / paste');
   // files as the story: Word, a photo of a page and a PDF
@@ -673,6 +678,10 @@ try {
   assert.ok(manyContent.some((c) => c.type === 'image'), 'the picture is sent');
   assert.ok(manyContent.some((c) => c.type === 'document' && Buffer.from(c.source.data, 'base64').toString().includes('chapter two')), 'the PDF is sent');
   console.log('✓ story files go to Claude: Word as text, the picture and the PDF as they are');
+  // with story files the topic card steps aside; without them, after solving, Claude's topic shows
+  await many.click('#sab-helper-host >> .tabbar >> text=סיפור');
+  assert.equal(await many.evaluate(() => !!document.querySelector('#sab-helper-host').shadowRoot.querySelector('.card.topic')), false, 'no topic card when there are story files');
+  await many.click('#sab-helper-host >> .tabbar >> text=תשובות');
   await many.waitForSelector('#sab-helper-host >> .answers .qbadge >> text=שאלה 15');
   const scroll = await many.evaluate(async () => {
     const body = document.querySelector('#sab-helper-host').shadowRoot.querySelector('.body');

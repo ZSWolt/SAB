@@ -43,6 +43,7 @@ export function summarizeScan(snaps: TaggedSnapshot[], opener: TaggedSnapshot[])
     videos: new Set(all.flatMap((s) => (s.videos ?? []).map((v) => v.url))).size,
     opener: opener.length > 0,
     questions: fields.map((f) => ({ text: questionLine(f.context), page: f.page, kind: f.kind })),
+    topic: snaps.find((s) => s.isTop)?.topic ?? '',
   };
 }
 
@@ -319,6 +320,8 @@ export class Panel {
         break;
       case 'result':
         set({ result: m.result, view: 'results', busy: false, openRow: -1, filled: this.keepFilled(m.result), ...this.showAnswers('answers') });
+        // classe: solving may have opened the story bar; read the page again so the story tab shows it
+        if (this.store.get().storySite && !this.store.get().scan?.story) void this.scan();
         break;
       case 'cached':
         set({ result: m.result, view: 'results', busy: false, openRow: -1, savedAt: m.at, savedElsewhere: false, ...this.showAnswers('answers') });

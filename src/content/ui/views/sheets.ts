@@ -7,6 +7,22 @@ import type { Actions, Drafts, Rendered } from './types';
 
 export const SHEET_TITLES = { settings: 'הגדרות' } as const;
 
+/** "נושא": Claude's line about the unit after solving, else the page's main heading. */
+function topicCard(s: UIState): HTMLElement | null {
+  const fromClaude = s.result?.topic?.trim();
+  const fromPage = s.scan?.topic?.trim();
+  if (!fromClaude && !fromPage) return null;
+  const [head, ...rest] = (fromClaude || fromPage || '').split('\n');
+  return h(
+    'div',
+    { class: 'card pad topic' },
+    h('div', { class: 'label' }, 'נושא'),
+    h('b', {}, head),
+    rest.join(' ').trim() ? h('div', {}, rest.join(' ').trim()) : null,
+    fromClaude ? null : h('div', { class: 'muted' }, 'אחרי הפתרון יופיע כאן הסבר קצר על הנושא'),
+  );
+}
+
 const kb = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
 /** "Add files": Word, PDF, text or a photo of the page, sent as the story with every solve on this page. */
@@ -75,6 +91,8 @@ export function storyTab(s: UIState, a: Actions, d: Drafts): Rendered {
             docs.slice(0, 3).map((doc) => h('a', { class: 'm', href: doc.url, target: '_blank', rel: 'noopener' }, icon('file'), h('span', { class: 't' }, doc.title))),
           )
         : null,
+      // no story (not classe, or not found) and no story files: what the unit / task is about
+      !story && !d.storyFiles.length ? topicCard(s) : null,
       story
         ? h('article', { class: 'card story' }, story.title ? h('h2', {}, story.title) : null, story.text)
         : s.storySite

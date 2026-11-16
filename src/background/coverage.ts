@@ -100,6 +100,7 @@ export function mergeResults(prev: SolveResult, next: SolveResult): SolveResult 
     sources: [...prev.sources, ...next.sources].filter((s) => !seen.has(s.url) && !!seen.add(s.url)),
     searches: [...prev.searches, ...next.searches],
     notes: [prev.notes, next.notes].filter(Boolean).join('\n'),
+    topic: prev.topic || next.topic,
     skipped: [...(prev.skipped ?? []).filter((s) => !next.answers.some((a) => a.field_id === s.field_id)), ...(next.skipped ?? [])],
     costUsd: prev.costUsd + next.costUsd,
   };

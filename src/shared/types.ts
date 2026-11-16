@@ -56,6 +56,8 @@ export interface DocumentRef {
 export interface FrameSnapshot {
   url: string;
   title: string;
+  /** The page's main heading: the unit / task topic. */
+  topic?: string;
   isTop: boolean;
   adapter: string;
   fields: FieldInfo[];
@@ -119,6 +121,8 @@ export interface SolveResult {
   missing?: { field_id: string; context: string; page?: number; section?: string }[];
   /** Fields that got more than one answer. */
   duplicates?: string[];
+  /** The unit / task topic in a line, then a sentence or two about it (from Claude). */
+  topic?: string;
   /** Fields Claude says are not questions (name, class, an "+ idea" box), with the reason. */
   skipped?: { field_id: string; reason: string }[];
   /** "שאלה N" headings in the page text that got no answer (questions without a field). */

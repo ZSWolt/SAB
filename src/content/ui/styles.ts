@@ -238,6 +238,7 @@ textarea:focus, input:focus { outline: 2px solid var(--soft); border-color: var(
 .item.ans .cq { font-size: 12px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .amark { font-size: 14px; line-height: 24px; color: var(--text); white-space: pre-wrap; }
 .amark.clamp { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.card.topic { gap: 6px; } .card.topic b { font-size: 15px; font-weight: 500; }
 .filedrop { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px; border: 1px dashed var(--strong); border-radius: 10px; }
 .filedrop.over { border-color: var(--sel); background: var(--soft); }
 .files { display: flex; flex-direction: column; gap: 4px; }
