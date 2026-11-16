@@ -161,3 +161,20 @@ describe('the topic of the page', () => {
     expect(pageTopic()).toBe('תיאטרון ביוון העתיקה');
   });
 });
+
+import { findDocuments } from '../../src/content/extract/documents';
+
+describe('privacy, terms, support and footers are not read', () => {
+  it('leaves them out of the page text, fields and documents', () => {
+    page(`
+      <main><p>שאלה 1: מה עשה הגיבור?</p><textarea></textarea><a href="/files/story.pdf">הסיפור (PDF)</a></main>
+      <section><h2>מדיניות פרטיות</h2><p>אנו אוספים מידע על המשתמשים…</p></section>
+      <div class="cookie-banner">האתר משתמש בעוגיות <button>אישור</button></div>
+      <footer><a href="/terms.pdf">תנאי שימוש</a> <a href="/support">תנאי תמיכה</a> כל הזכויות שמורות <input type="email" placeholder="ניוזלטר"></footer>`);
+    const snap = extractFrame();
+    expect(snap.fullText).toContain('מה עשה הגיבור');
+    for (const junk of ['אנו אוספים מידע', 'עוגיות', 'כל הזכויות שמורות', 'תנאי שימוש']) expect(snap.fullText).not.toContain(junk);
+    expect(snap.fields).toHaveLength(1); // the newsletter box in the footer is not a question
+    expect(findDocuments().map((d) => d.title)).toEqual(['הסיפור (PDF)']);
+  });
+});

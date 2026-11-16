@@ -30,7 +30,8 @@ function nextId(): string {
 const TOOLBAR = '[role="toolbar"], [role="menubar"], [class*="toolbar" i], .tox-editor-header, .mce-container, .mce-toolbar, .cke_top, .ql-toolbar';
 
 function inIgnoredArea(el: Element): boolean {
-  return !!el.closest(`[role="search"], nav, header[role="banner"], #sab-helper-host, ${TOOLBAR}`);
+  // footers and cookie / consent banners hold sign-up boxes, never the task's questions
+  return !!el.closest(`[role="search"], nav, header[role="banner"], #sab-helper-host, footer, [role="contentinfo"], [id*="cookie" i], [class*="cookie" i], [class*="consent" i], ${TOOLBAR}`);
 }
 
 /** A select that picks a font, size or text style. */

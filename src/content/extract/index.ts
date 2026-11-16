@@ -7,6 +7,7 @@ import { findDocuments } from './documents';
 import { findPagination } from './pages';
 import { isRendered } from '../text';
 import { looksLikeQuestion } from '../../shared/questions';
+import { isBoilerplate, isWidgetFrame } from './boilerplate';
 
 const MAX_PAGE_TEXT = 60000;
 
@@ -72,6 +73,8 @@ export function pageTopic(doc: Document = document): string {
 
 /** Reads this frame: answer fields with their question text, the story (if any) and the page text. */
 export function extractFrame(doc: Document = document): FrameSnapshot {
+  // a chat / support / tracking widget frame is not part of the task
+  if (isWidgetFrame()) return { url: location.href, title: doc.title, isTop: false, adapter: 'generic', fields: [], fullText: '', videos: [], documents: [] };
   const isTop = window === window.top;
   const groups = findFieldGroups(doc);
   const adapter = detectAdapter();
@@ -91,7 +94,8 @@ export function extractFrame(doc: Document = document): FrameSnapshot {
   const fullText = doc.body
     ? getText(doc.body, {
         skipHidden: true,
-        exclude: found ? (el) => el === found.element : undefined,
+        // never the story twice, and never privacy / terms / support / cookie / footer text
+        exclude: (el) => el === found?.element || isBoilerplate(el),
         limit: MAX_PAGE_TEXT,
       }).slice(0, MAX_PAGE_TEXT)
     : '';

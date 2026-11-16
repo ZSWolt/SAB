@@ -1,5 +1,6 @@
 import type { DocumentRef } from '../../shared/types';
 import { getText } from '../text';
+import { isBoilerplate, isLegalDoc } from './boilerplate';
 
 /** Recognizes a PDF / Google Doc / Drive file URL and where to download it from. */
 export function documentRef(raw: string | null | undefined, title: string, embedded: boolean): DocumentRef | null {
@@ -59,8 +60,11 @@ export function findDocuments(doc: Document = document): DocumentRef[] {
     add(documentRef(src, el.getAttribute('title') ?? '', true));
   });
   doc.querySelectorAll('a[href]').forEach((a) => {
-    if (a.closest('nav, header[role="banner"], #sab-helper-host')) return;
-    add(documentRef(a.getAttribute('href'), getText(a), false));
+    if (a.closest('nav, header[role="banner"], #sab-helper-host') || isBoilerplate(a) || a.closest('footer, [role="contentinfo"]')) return;
+    const title = getText(a);
+    // a privacy policy / terms / support PDF is not task material: don't download and send it
+    if (isLegalDoc(title, a.getAttribute('href') ?? '')) return;
+    add(documentRef(a.getAttribute('href'), title, false));
   });
   return Array.from(found.values())
     .sort((a, b) => Number(b.embedded) - Number(a.embedded))
