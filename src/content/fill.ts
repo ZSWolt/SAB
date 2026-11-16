@@ -60,6 +60,23 @@ function fillTable(el: HTMLElement, cells: { row: number; col: number; text: str
   return placed;
 }
 
+/**
+ * The text we put on the page: one line break between parts (never an empty line), Hebrew letters in
+ * their plain form (not presentation forms like U+FB3B), and no invisible direction marks or
+ * zero-width characters, which render in another font and look odd in a submitted answer.
+ */
+export function cleanFillText(text: string): string {
+  return text
+    .normalize('NFC')
+    .replace(/[\uFB1D-\uFB4F]/g, (c) => c.normalize('NFKC'))
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u00AD]/g, '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n\s*\n+/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .trim();
+}
+
 function setRichText(el: HTMLElement, value: string) {
   const prev = el.innerHTML;
   el.focus();
@@ -171,7 +188,8 @@ function pickSelect(sel: HTMLSelectElement, wanted: string): boolean {
 
 /** Fills the given fields in this frame. Never submits anything. */
 export function fillFields(items: FillItem[], doc: Document = document): FillOutcome[] {
-  return items.map((item) => {
+  return items.map((raw) => {
+    const item = { ...raw, value: cleanFillText(raw.value), cells: raw.cells?.map((c) => ({ ...c, text: cleanFillText(c.text) })) ?? raw.cells };
     const group = findField(item.fieldId, doc);
     if (!group) return { fieldId: item.fieldId, ok: false, message: 'השדה לא נמצא. אולי הדף השתנה, אז כדאי לפתור שוב' };
     const el = group.elements[0];

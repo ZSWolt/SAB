@@ -70,3 +70,24 @@ describe('a table inside an editor', () => {
     expect(rows).toEqual([['מאפיין', 'הדגמה'], ['דמות חונך', 'הסבא'], ['מסע פיזי', 'הנסיעה']]);
   });
 });
+
+import { cleanFillText } from '../../src/content/fill';
+
+describe('clean text on the page', () => {
+  it('one line break between parts, never an empty line', () => {
+    expect(cleanFillText('החלק הראשון.\n\nהחלק השני.')).toBe('החלק הראשון.\nהחלק השני.');
+    expect(cleanFillText('א  \n \n\n ב')).toBe('א\nב');
+  });
+  it('plain Hebrew letters and no invisible marks', () => {
+    expect(cleanFillText('כּמו ‏כי​')).toBe('כּמו כי'.normalize('NFC'));
+    expect(cleanFillText('כמו שכתוב "אחים שלנו"')).toBe('כמו שכתוב "אחים שלנו"');
+  });
+  it('fills a rich editor without an empty line between the parts', () => {
+    document.body.innerHTML = `<p>תארו ונמקו</p><div contenteditable="true"></div>`;
+    const [f] = extractFrame().fields;
+    fillFields([{ fieldId: f.id, value: 'תשובה לחלק א.\n\nתשובה לחלק ב.', option: null }]);
+    const ed = document.querySelector('[contenteditable]')!;
+    expect(ed.querySelectorAll('br').length).toBeLessThanOrEqual(1);
+    expect(ed.textContent).toBe('תשובה לחלק א.תשובה לחלק ב.');
+  });
+});

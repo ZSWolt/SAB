@@ -11,6 +11,7 @@ import { icon } from './icons';
 import { createStore, initialState, resolveTheme, upsertStep, type AnswersMode, type Filter, type ScanSummary, type Sheet, type Tab, type UIState } from './store';
 import { PANEL_CSS } from './styles';
 import { readStoryFile } from './storyFiles';
+import { cleanFillText } from '../fill';
 import { answersView } from './views/answers';
 import { boardView } from './views/board';
 import { chatView } from './views/chat';
@@ -408,8 +409,9 @@ export class Panel {
     }
   }
 
-  private copy(text: string) {
-    navigator.clipboard.writeText(text).then(
+  /** Copies clean text; "copy all" keeps its empty line between different questions. */
+  private copy(text: string, joined = false) {
+    navigator.clipboard.writeText(joined ? text : cleanFillText(text)).then(
       () => this.toast('הועתק'),
       () => this.toast('ההעתקה נכשלה'),
     );
@@ -447,7 +449,7 @@ export class Panel {
         const r = this.store.get().result;
         if (!r) return;
         const inOrder = orderedRows(r.answers).map((row) => r.answers[row.index]);
-        this.copy(inOrder.map((a) => `${a.questionText || [a.question, a.part].filter(Boolean).join(' ')}\n${a.option ? `${a.option}\n` : ''}${a.answer}`).join('\n\n'));
+        this.copy(inOrder.map((a) => cleanFillText(`${a.questionText || [a.question, a.part].filter(Boolean).join(' ')}\n${a.option ? `${a.option}\n` : ''}${a.answer}`)).join('\n\n'), true);
       },
       completeMissing: () => {
         const r = this.store.get().result;
