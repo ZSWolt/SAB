@@ -33,6 +33,10 @@ export interface Actions {
   openHistory(key: string): void;
   deleteHistory(key: string): void;
   setTab(tab: Tab): void;
+  /** Fix the structural AI signs of answer `i` (dashes, empty lines…), locally. */
+  fixStyle(i: number): void;
+  /** Ask the chat to rephrase an answer so it sounds like a student. */
+  rephrase(label: string, phrases: string[]): void;
   /** Answers tab, showing the answers or the check-me grades. */
   openAnswers(mode: AnswersMode): void;
   setAnswersMode(mode: AnswersMode): void;

@@ -1,6 +1,7 @@
 import { orderedRows, questionLabel } from '../../../shared/labels';
 import type { Answer, ReviewItem, SolveResult } from '../../../shared/types';
 import { activityKey, isActivity } from '../../../shared/types';
+import { aiScore } from '../../../shared/aiScore';
 import { btn, fmtDate, h, iconBtn, keys, plural } from '../dom';
 import { icon } from '../icons';
 import type { Filter, UIState } from '../store';
@@ -62,7 +63,7 @@ function resultRow(ans: Answer, i: number, label: string, s: UIState, a: Actions
       h(
         'div',
         { class: 'cmain' },
-        h('span', { class: 'qline' }, qbadge(label), where(ans), h('span', { class: `chip ${cls}` }, chip)),
+        h('span', { class: 'qline' }, qbadge(label), where(ans), aiChip(ans), h('span', { class: `chip ${cls}` }, chip)),
         h('span', { class: 'cq', title: q }, q),
         ans.how ? h('div', { class: 'ahow' }, icon('pick', 14), h('span', {}, h('b', {}, 'מה לעשות: '), ans.how)) : null,
         // a table question: the table itself, with the answers marked in their cells
@@ -95,6 +96,7 @@ function resultRow(ans: Answer, i: number, label: string, s: UIState, a: Actions
           { class: 'qmore' },
           detail ? h('div', {}, h('div', { class: 'label' }, ans.option ? 'הסבר' : 'השאלה המלאה'), h('div', { class: 'sec' }, detail)) : h('div', { class: 'muted' }, 'אין הסבר נוסף לתשובה הזאת'),
           fillMsg ? h('div', { class: 'qstatus bad' }, fillMsg) : null,
+          aiDetails(ans, i, label, a),
         )
       : null,
   );
@@ -147,6 +149,48 @@ function skippedBox(r: SolveResult): HTMLElement | null {
     h('summary', {}, list.length === 1 ? 'דולג שדה אחד שהוא לא שאלה' : `דולגו ${list.length} שדות שהם לא שאלות`),
     h('div', { class: 'muted' }, list.map((x) => h('div', {}, `• ${x.reason || 'לא שאלה'}`))),
   );
+}
+
+// ---------- how AI-looking (local estimate) ----------
+
+/** Only answers written as text are judged (not a chosen option, a table or an activity). */
+const judged = (ans: Answer) => !ans.option && !ans.cells?.length && !isActivity(ans);
+
+function aiChip(ans: Answer): HTMLElement | null {
+  if (!judged(ans)) return null;
+  const { score } = aiScore(ans.answer);
+  if (score === null) return null;
+  const cls = score <= 25 ? 'ok' : score <= 55 ? 'acc' : 'bad';
+  return h('span', { class: `chip ai ${cls}`, title: 'כמה התשובה נראית כתובה ב-AI: הערכה לפי סימנים מוכרים, לא גלאי אמיתי' }, `AI ${score}%`);
+}
+
+function aiDetails(ans: Answer, i: number, label: string, a: Actions): HTMLElement | null {
+  if (!judged(ans)) return null;
+  const r = aiScore(ans.answer);
+  if (r.score === null) return null;
+  const structural = r.issues.some((x) => /מקף|שורה ריקה|נקודתיים|רשימה|markdown|מעוגלות|נסתרים/.test(x.label));
+  return h(
+    'div',
+    { class: 'aibox' },
+    h('div', { class: 'label' }, `נראה AI: ${r.score}% (הערכה לפי סימנים, לא גלאי אמיתי)`),
+    r.issues.length ? h('div', { class: 'sec' }, r.issues.map((x) => (x.count > 1 ? `${x.count} × ${x.label}` : x.label)).join(' · ')) : h('div', { class: 'muted' }, 'לא נמצאו סימנים מיוחדים'),
+    r.issues.length
+      ? h(
+          'div',
+          { class: 'row' },
+          structural ? btn('תקן מבנה', () => a.fixStyle(i), { cls: 'sm', icon: 'check' }) : null,
+          btn('נסח כמו תלמיד', () => a.rephrase(label, r.issues.filter((x) => x.label.startsWith('"')).map((x) => x.label)), { cls: 'sm ghost', icon: 'chat' }),
+        )
+      : null,
+  );
+}
+
+function aiAverage(r: SolveResult): HTMLElement | null {
+  const scores = r.answers.filter(judged).map((x) => aiScore(x.answer).score).filter((n): n is number => n !== null);
+  if (!scores.length) return null;
+  const avg = Math.round(scores.reduce((x, y) => x + y, 0) / scores.length);
+  const high = scores.filter((n) => n > 55).length;
+  return h('div', { class: 'muted aiavg' }, `ממוצע AI: ${avg}%${high ? ` · ${high === 1 ? 'תשובה אחת נראית' : `${high} תשובות נראות`} כתובות ב-AI (פתח "פירוט" כדי לתקן)` : ''}`);
 }
 
 /** Matching: each box and the box it goes with, in two columns. */
@@ -248,6 +292,7 @@ function answersList(s: UIState, a: Actions): Rendered {
       modeSwitch(s, a),
       errorBanner(s),
       notices(r, s, a),
+      aiAverage(r),
       failedDocs.map((d) => metaRow('alert', `לא נקרא: ${d.title}${d.message ? ` · ${d.message}` : ''}`, { bad: true })),
       failedVideos.map((v) => metaRow('alert', `לא נצפה: ${v.url.replace('https://www.', '')}${v.message ? ` · ${v.message}` : ''}`, { bad: true, title: v.url })),
       h(

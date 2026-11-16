@@ -12,6 +12,7 @@ import { createStore, initialState, resolveTheme, upsertStep, type AnswersMode, 
 import { PANEL_CSS } from './styles';
 import { readStoryFile } from './storyFiles';
 import { cleanFillText } from '../fill';
+import { fixStructure } from '../../shared/aiScore';
 import { answersView } from './views/answers';
 import { boardView } from './views/board';
 import { chatView } from './views/chat';
@@ -513,6 +514,19 @@ export class Panel {
       },
       openAnswers: (mode: AnswersMode) => set({ tab: 'answers', answersMode: mode, sheet: null, filter: 'all', openRow: -1 }),
       setAnswersMode: (mode: AnswersMode) => set({ answersMode: mode, openRow: -1 }),
+      fixStyle: (i: number) => {
+        const r = this.store.get().result;
+        if (!r?.answers[i]) return;
+        const answers = r.answers.map((x, j) => (j === i ? { ...x, answer: fixStructure(x.answer) } : x));
+        const result = { ...r, answers };
+        set({ result });
+        send({ type: 'set-result', result }).catch(() => {});
+        this.toast('המבנה תוקן. אפשר למלא שוב');
+      },
+      rephrase: (label: string, phrases: string[]) => {
+        const avoid = phrases.length ? ` ובלי ${phrases.join(', ')}` : '';
+        this.sendChat(`תנסח מחדש את התשובה ל${label} כך שתישמע כמו תלמיד כיתה י"א שכתב בעצמו: משפטים באורכים שונים, בלי מקפים ארוכים, בלי נקודתיים ובלי שורות ריקות${avoid}. אותו תוכן.`);
+      },
       setFilter: (filter: Filter) => set({ filter, openRow: -1 }),
       sendChat: (text: string) => this.sendChat(text),
       stopChat: () => {

@@ -229,6 +229,13 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         }
         return out;
       }
+      case 'set-result': {
+        // the panel changed an answer locally ("fix structure"): keep it for this tab
+        const results = await getMap<SolveResult>('results');
+        results[tabId] = msg.result as SolveResult;
+        await chrome.storage.session.set({ results });
+        return true;
+      }
       case 'activity': {
         // matching / marking activities: go to the answer's page, then click and mark in every frame
         const list = msg.answers as Answer[];

@@ -88,7 +88,12 @@ function setRichText(el: HTMLElement, value: string) {
       range.selectNodeContents(el);
       sel.removeAllRanges();
       sel.addRange(range);
-      done = el.ownerDocument.execCommand?.('insertText', false, value) ?? false;
+      // several lines: line breaks inside one paragraph (like Shift+Enter). insertText would make a new
+      // paragraph per line, and editors put a big gap between paragraphs
+      const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      done = value.includes('\n')
+        ? el.ownerDocument.execCommand?.('insertHTML', false, value.split('\n').map(esc).join('<br>')) ?? false
+        : el.ownerDocument.execCommand?.('insertText', false, value) ?? false;
     }
   } catch {
     done = false;

@@ -33,6 +33,8 @@ function toolEvents(body, name, input) {
 let skipIframeField = 2;
 // the next answer for the textarea comes without its field id (an "orphan")
 let orphanNext = false;
+// the next textarea answer is written like an AI (long dashes, an empty line, clichés)
+let aiStyleNext = false;
 
 function mockChat(body) {
   const ctx = body.messages[0].content.map((c) => c.text ?? '').join('\n');
@@ -85,11 +87,12 @@ function mockAnswer(body) {
     cells: f.table ? f.table.flatMap((row, r) => row.map((c, col) => (c ? null : { row: r, col, text: `הדגמה לשורה ${r}` }))).filter(Boolean) : null,
     question: `שאלה ${(f.question_text ?? "").match(/שאלה (\d+)/)?.[1] ?? i + 1}`,
     part: '',
-    answer: f.kind === 'radio' ? 'כי הוא כתב אותו' : f.kind === 'text' ? '1966' : 'תשובה לבדיקה',
+    answer: f.kind === 'radio' ? 'כי הוא כתב אותו' : f.kind === 'text' ? '1966' : aiStyleNext ? 'חשוב לציין כי הכלה — שהייתה צעירה מאוד — השתנתה לאורך כל הסיפור.\n\nלסיכום: ניתן לומר שהיא למדה הרבה על עצמה ועל העולם שסביבה.' : 'תשובה לבדיקה',
     field_id: orphanNext && f.kind === 'textarea' ? null : f.id,
     option: f.kind === 'radio' ? 'עגנון' : null,
   }));
   orphanNext = false;
+  aiStyleNext = false;
   // activities without fields: matching boxes and marking sentences with a color legend
   if (text.includes('התאימו בין הבעיה לפתרון')) {
     answers.push({ how: 'לחץ על בעיה ואז על הפתרון', cells: null, highlights: null, page: null, question: 'התאמה', part: '', answer: '', field_id: null, option: null,
@@ -618,6 +621,27 @@ try {
   assert.ok((await actP.evaluate(() => window.__marks[0].text)).includes('חלק מפולחן דתי'));
   console.log('✓ matching and color-marking activities: shown as pairs / categories, and done on the page');
   await actP.close();
+
+  // "how AI-looking": a score per answer, the signs, and "fix structure"
+  aiStyleNext = true;
+  const aiP = await ctx.newPage();
+  await aiP.goto(`http://localhost:${port}/task.html?attempt=90`);
+  await aiP.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await aiP.keyboard.press('Alt+Shift+A');
+  await aiP.waitForSelector('#sab-helper-host >> .chip.ai.bad', { timeout: 30000 });
+  await aiP.waitForSelector('#sab-helper-host >> .aiavg >> text=/ממוצע AI/');
+  await aiP.click('#sab-helper-host >> .answers .item >> nth=0 >> button.more');
+  await aiP.waitForSelector('#sab-helper-host >> .aibox >> text=/מקף ארוך/');
+  await aiP.waitForSelector('#sab-helper-host >> .aibox >> text=/שורה ריקה/');
+  const aiBefore = await aiP.evaluate(() => Number(document.querySelector('#sab-helper-host').shadowRoot.querySelector('.chip.ai').textContent.match(/\d+/)[0]));
+  await aiP.click('#sab-helper-host >> .aibox >> text=תקן מבנה');
+  await aiP.waitForFunction((b) => Number(document.querySelector('#sab-helper-host').shadowRoot.querySelector('.chip.ai').textContent.match(/\d+/)[0]) < b, aiBefore);
+  const fixedText = await aiP.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelector('.answers .item .amark').textContent);
+  assert.ok(!fixedText.includes('—') && !fixedText.includes('\n\n'), `structure fixed: ${fixedText}`);
+  await aiP.click('#sab-helper-host >> .answers .item >> nth=0 >> button:has-text("מלא")');
+  await aiP.waitForFunction(() => document.querySelector('#q1').value.includes('השתנתה') && !document.querySelector('#q1').value.includes('—'));
+  console.log('✓ AI-look score per answer with its signs; "fix structure" lowers it and the fixed text is filled');
+  await aiP.close();
 
   // a question left without an answer is completed automatically in the same solve
   skipIframeField = 1;
