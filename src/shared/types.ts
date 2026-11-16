@@ -86,6 +86,8 @@ export interface Answer {
   field_id: string | null;
   /** For choice fields: the exact option label to pick. */
   option: string | null;
+  /** The task-map item (question) this answer belongs to. */
+  item?: string;
   /** What to do on the page (drag this, paste there…), for activities without a text field. */
   how?: string | null;
   /** For a table question: what goes in each empty cell. */
@@ -123,6 +125,10 @@ export interface SolveResult {
   duplicates?: string[];
   /** The unit / task topic in a line, then a sentence or two about it (from Claude). */
   topic?: string;
+  /** How Claude understood the task: questions, their parts, helper prompts. */
+  taskMap?: TaskMapItem[];
+  /** Parts of questions that got no answer. */
+  missingParts?: { item: string; number: string | null; label: string; asks: string; page?: number | null }[];
   /** Fields Claude says are not questions (name, class, an "+ idea" box), with the reason. */
   skipped?: { field_id: string; reason: string }[];
   /** "שאלה N" headings in the page text that got no answer (questions without a field). */
@@ -147,6 +153,18 @@ export interface FillOutcome {
   fieldId: string;
   ok: boolean;
   message?: string;
+}
+
+/** One item of the task map Claude writes before answering. */
+export interface TaskMapItem {
+  id: string;
+  number: string | null;
+  page: number | null;
+  kind: 'question' | 'helper' | 'instruction';
+  text: string;
+  parts: { label: string; asks: string }[];
+  field_ids: string[];
+  belongs_to: string | null;
 }
 
 /** Key in the panel's "filled" map for an activity answer (no field). */
@@ -178,6 +196,8 @@ export interface SolveRequest {
   storyFiles?: StoryFile[];
   /** Questions in the text (by number) to answer now ("complete the missing"). */
   missingText?: number[];
+  /** Parts of questions (task map) to answer now ("complete the missing"). */
+  missingParts?: { item: string; number: string | null; label: string; asks: string }[];
   /** Set by the background: why only some fields are asked for. */
   onlyReason?: 'missing' | 'empty';
 }

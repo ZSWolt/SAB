@@ -67,6 +67,14 @@ ${writingSection(settings)}
 - אם יש תשובות מעמודים קודמים של אותה משימה (<previous_pages>) – תשמור על רצף ולא תסתור אותן.
 - אם משהו באמת לא ברור או חסר (למשל תמונה שלא רואים), תענה הכי טוב שאפשר ותכתוב את זה ב-notes.
 
+## קודם להבין את המשימה (task_map)
+לפני שאתה עונה, תמפה את המשימה ב-task_map:
+- question: שאלה שהתלמיד צריך לענות עליה (בתיבה, בבחירה, בפעילות או בטקסט).
+- helper: הנחיית עזר ששייכת לשאלה ועוזרת להכין את התשובה, ולא עונים עליה בנפרד: "היעזרו ב...", "חשבו על...", "שימו לב ש...", "שאלות מנחות", "כדי לענות...", רמזים, דוגמה לתשובה. תשים ב-belongs_to את השאלה שהיא עוזרת לה, ותשלב אותה בתשובה לשאלה הזאת, בלי תשובה משלה.
+- instruction: הוראה כללית, כותרת, הוראת קריאה ("קראו את המקורות").
+- parts: **כל דרישה נפרדת היא סעיף**, גם בתוך משפט אחד: "תארו את דרכי הסיוע... ומהי לדעתכם מטרת הטור? בססו על ציטוטים" = סעיפים: תיאור, מטרה, ציטוטים. סעיפים מסומנים (א, ב, ג / 1, 2, 3) כמו במשימה.
+- answers: לכל סעיף של כל question תשובה משלה: item = ה-id, part = ה-label של הסעיף. אל תדלג על סעיף. כשיש תיבה אחת לכמה סעיפים, תכתוב את הסעיפים זה אחרי זה באותה תשובה, ו-part = הסעיפים מופרדים בפסיק.
+
 ## תשובות שאפשר לעבוד איתן
 - תשובה אחת לכל שאלה **אמיתית** שהתלמיד צריך לענות עליה. כותרת של עמוד, הוראות קריאה ("קראו את המקורות"), "שימו לב" ושם של פעילות הם לא שאלות, ואל תכתוב להם תשובה.
 - how הוא "מה לעשות": 1–3 צעדים קצרים ומדויקים, רק כשיש מה לעשות בדף חוץ מלכתוב בשדה:
@@ -137,6 +145,8 @@ export interface PromptInput {
   onlyReason?: 'missing' | 'empty';
   /** "שאלה N" headings in the text that got no answer last time. */
   missingText?: number[];
+  /** Parts of questions (from the task map) that got no answer last time. */
+  missingParts?: { item: string; number: string | null; label: string; asks: string }[];
   screenshot?: string | null;
   /** Pictures of activities taken while walking the task's pages/tabs (CET). */
   images?: { label: string; dataUrl: string }[];
@@ -215,10 +225,13 @@ export function buildPageText(input: PromptInput): string {
     parts.push('תבדוק את התשובות שהתלמיד כתב (already_filled), ואז תקרא ל-submit_review.');
   } else if (input.onlyFields?.length && input.onlyReason === 'empty') {
     parts.push('התלמיד כבר ענה בעצמו על שאר השאלות. תענה **רק** על השדות שברשימה (על כל אחד מהם), בלי שאלות אחרות, ואז תקרא ל-submit_answers.');
-  } else if (input.onlyFields?.length || input.missingText?.length) {
+  } else if (input.onlyFields?.length || input.missingText?.length || input.missingParts?.length) {
     const textQs = input.missingText?.length ? ` וגם השאלות שבטקסט: ${input.missingText.map((n) => `שאלה ${n}`).join(', ')} (בלי שדה, field_id = null)` : '';
+    const partsQs = input.missingParts?.length
+      ? ` וגם הסעיפים: ${input.missingParts.map((p) => `${p.number ?? p.item} סעיף "${p.label}" (${p.asks}) [item=${p.item}, part=${p.label}]`).join('; ')}`
+      : '';
     parts.push(
-      `בפעם הקודמת ${input.onlyFields?.length ? 'השדות שברשימה' : 'חלק מהשאלות'}${textQs} לא קיבלו תשובה. תענה **רק** עליהם, על כל אחד מהם. אם שדה באמת לא שאלה (שם, כיתה, תיבת רעיון), תכניס אותו ל-skipped עם סיבה. ואז תקרא ל-submit_answers.`,
+      `בפעם הקודמת ${input.onlyFields?.length ? 'השדות שברשימה' : 'חלק מהשאלות'}${textQs}${partsQs} לא קיבלו תשובה. תענה **רק** עליהם, על כל אחד מהם. אם שדה באמת לא שאלה (שם, כיתה, תיבת רעיון), תכניס אותו ל-skipped עם סיבה. ואז תקרא ל-submit_answers.`,
     );
   } else if (input.note.trim()) {
     parts.push('תעשה בדיוק מה שכתוב ב-student_note. אם היא מגבילה לאילו שאלות לענות, תענה רק עליהן. רק אם היא לא מגבילה, תענה על כל השאלות והסעיפים שבמשימה. ואז תקרא ל-submit_answers.');
@@ -331,6 +344,8 @@ function chatContextText(c: ChatContext): string {
       answer: a.answer,
     }));
     parts.push(`<current_answers note="התשובות שכבר נכתבו למשימה, לפי הסדר בלשונית התשובות של התלמיד">\n${JSON.stringify(answers, null, 1)}\n</current_answers>`);
+    // how the task was understood: questions, parts, helper prompts
+    if (c.result.taskMap?.length) parts.push(`<task_map note="מה שאלה, מה סעיף ומה רק עזר">\n${JSON.stringify(c.result.taskMap.map((m) => ({ id: m.id, number: m.number, kind: m.kind, text: m.text, parts: m.parts, belongs_to: m.belongs_to })), null, 1)}\n</task_map>`);
     const gaps = order.filter((row) => row.kind === 'missing');
     if (gaps.length) parts.push(`<missing note="שדות בלי תשובה">\n${gaps.map(({ index, label }) => `${label} (field_id ${missing[index].field_id}): ${missing[index].context}`).join('\n')}\n</missing>`);
   } else {

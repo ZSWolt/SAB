@@ -203,6 +203,13 @@ function lastWork(s: UIState, a: Actions): (HTMLElement | null)[] {
         { class: 'card pad done-card' },
         h('div', { class: 'row' }, icon('check'), h('b', {}, 'התשובות מוכנות'), h('span', { class: 'muted', style: 'margin-inline-start:auto' }, shortCost(r.costUsd))),
         h('div', { class: 'muted' }, [`${r.answers.length} מתוך ${c.all}`, c.filled ? `${c.filled} מולאו` : '', c.missing ? plural(c.missing, 'שאלה אחת חסרה', 'שאלות חסרות') : ''].filter(Boolean).join(' · ')),
+        r.taskMap?.length
+          ? h('div', { class: 'muted' }, (() => {
+              const qs = r.taskMap!.filter((m) => m.kind === 'question');
+              const helpers = r.taskMap!.filter((m) => m.kind === 'helper').length;
+              return `הבנתי: ${qs.length} שאלות · ${qs.reduce((n, q) => n + Math.max(1, q.parts.length), 0)} סעיפים${helpers ? ` · ${helpers} הנחיות עזר` : ''}`;
+            })())
+          : null,
         h('div', { class: 'row' }, btn('פתח את התשובות', () => a.openAnswers('answers'), { cls: 'primary sm', icon: 'answers' }), c.missing ? btn('השלם חסר', () => a.completeMissing(), { cls: 'sm', icon: 'plus' }) : null),
       ),
     );

@@ -54,3 +54,38 @@ describe('coverage', () => {
     expect(checkCoverage([page], r).missingText).toEqual([6]);
   });
 });
+
+import { checkMap, mergeResults } from '../../src/background/coverage';
+import type { TaskMapItem } from '../../src/shared/types';
+
+const map: TaskMapItem[] = [
+  { id: 'q1', number: 'שאלה 1', page: null, kind: 'question', text: 'תארו ובססו', parts: [{ label: 'א', asks: 'לתאר' }, { label: 'ב', asks: 'לבסס על ציטוטים' }], field_ids: ['0:a', '0:b'], belongs_to: null },
+  { id: 'h1', number: null, page: null, kind: 'helper', text: 'היעזרו בשאלות המנחות', parts: [], field_ids: ['0:h'], belongs_to: 'q1' },
+];
+
+describe('the task map', () => {
+  it('drops answers to helper prompts and finds the parts left without an answer', () => {
+    const r = result(
+      [
+        { item: 'q1', question: 'שאלה 1', part: 'א', answer: 'תיאור', field_id: '0:a', option: null },
+        { item: 'h1', question: 'עזר', part: '', answer: 'לא צריך', field_id: '0:h', option: null },
+      ],
+      { taskMap: map },
+    );
+    const out = checkMap(r);
+    expect(out.answers.map((a) => a.item)).toEqual(['q1']);
+    expect(out.skipped?.map((s) => s.field_id)).toEqual(['0:h']);
+    expect(out.missingParts?.map((p) => p.label)).toEqual(['ב']);
+  });
+
+  it('all parts answered (also several parts in one answer): nothing missing', () => {
+    expect(checkMap(result([{ item: 'q1', question: '1', part: 'א, ב', answer: 'x', field_id: null, option: null }], { taskMap: map })).missingParts).toEqual([]);
+    expect(checkMap(result([{ item: 'q1', question: '1', part: '', answer: 'x', field_id: null, option: null }], { taskMap: map })).missingParts).toEqual([]);
+  });
+
+  it('a completed part replaces by question + part, not added twice', () => {
+    const prev = result([{ item: 'q1', question: '1', part: 'ב', answer: 'ישן', field_id: null, option: null }], { taskMap: map });
+    const next = result([{ item: 'q1', question: '1', part: 'ב', answer: 'חדש', field_id: null, option: null }]);
+    expect(mergeResults(prev, next).answers.map((a) => a.answer)).toEqual(['חדש']);
+  });
+});

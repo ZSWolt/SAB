@@ -75,6 +75,25 @@ function mockAnswer(body) {
     }));
     return toolEvents(body, 'submit_review', JSON.stringify({ items, overall: 'כיוון טוב', sources: [] }));
   }
+  // a question with two parts and a helper prompt: first answer only part א and (wrongly) the helper,
+  // then, when asked for the missing part, answer part ב
+  if (text.includes('היעזרו בשאלות המנחות')) {
+    const pa = fields.find((f) => (f.question_text ?? '').includes('א. דרכי הסיוע'));
+    const pb = fields.find((f) => (f.question_text ?? '').includes('ב. מטרת הטור'));
+    const task_map = [
+      { id: 'q1', number: 'שאלה 1', page: null, kind: 'question', text: 'דרכי הסיוע ומטרת הטור', parts: [{ label: 'א', asks: 'לתאר את דרכי הסיוע' }, { label: 'ב', asks: 'מטרת הטור עם ציטוטים' }], field_ids: [pa?.id, pb?.id].filter(Boolean), belongs_to: null },
+      { id: 'h1', number: null, page: null, kind: 'helper', text: 'היעזרו בשאלות המנחות', parts: [], field_ids: [], belongs_to: 'q1' },
+    ];
+    const base = { how: null, cells: null, matches: null, highlights: null, page: null, option: null };
+    const asksForB = text.includes('סעיף "ב"');
+    const answers = asksForB
+      ? [{ ...base, item: 'q1', question: 'שאלה 1', part: 'ב', answer: 'המטרה הייתה לגייס את הילדים כמו שכתוב "אחים שלנו"', field_id: pb?.id ?? null }]
+      : [
+          { ...base, item: 'q1', question: 'שאלה 1', part: 'א', answer: 'היישוב אסף בגדים ושלח אותם', field_id: pa?.id ?? null },
+          { ...base, item: 'h1', question: 'עזר', part: '', answer: 'הטור נכתב לילדים', field_id: null },
+        ];
+    return toolEvents(body, 'submit_answers', JSON.stringify({ task_map, answers, sources: [], notes: '', skipped: [], topic: 'העצורים בקפריסין' }));
+  }
   // first time on the main task page: "forget" the field in the iframe, to test "complete the missing ones"
   const isOnly = text.includes('תענה **רק** עליהם');
   const forget = skipIframeField > 0 && fields.some((f) => f.kind === 'text');
@@ -158,7 +177,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/pdf' });
     return res.end('%PDF-1.4\n% fake story pdf for the test\n%%EOF');
   }
-  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/classe.html': 'classe.html', '/activities.html': 'activities.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
+  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/classe.html': 'classe.html', '/activities.html': 'activities.html', '/parts.html': 'parts.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
   if (!file) return res.writeHead(404).end();
   let html = readFileSync(resolve('tests/fixtures', file), 'utf8');
   // the iframe is served from another origin (127.0.0.1 vs localhost) to test cross-origin frames
@@ -653,6 +672,24 @@ try {
   await aiP.waitForFunction(() => document.querySelector('#q1').value.includes('השתנתה') && !document.querySelector('#q1').value.includes('—'));
   console.log('✓ AI-look score per answer with its signs; "fix structure" lowers it and the fixed text is filled');
   await aiP.close();
+
+  // the task map: helper prompts get no answer, every part of a question is answered
+  const partsP = await ctx.newPage();
+  await partsP.goto(`http://localhost:${port}/parts.html`);
+  await partsP.waitForSelector('#sab-helper-host', { state: 'attached' });
+  const beforeParts = requests.length;
+  await partsP.keyboard.press('Alt+Shift+A');
+  await partsP.waitForSelector('#sab-helper-host >> .rl >> text=2/2', { timeout: 30000 });
+  assert.equal(requests.length - beforeParts, 2, 'the missing part was asked for automatically');
+  assert.ok(requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n').includes('סעיף "ב"'), 'asked for part ב by name');
+  const shownAnswers = await partsP.evaluate(() => document.querySelector('#sab-helper-host').shadowRoot.querySelector('.list.answers').textContent);
+  assert.ok(!shownAnswers.includes('הטור נכתב לילדים'), 'no answer for the helper prompt');
+  assert.ok(shownAnswers.includes('אחים שלנו') && shownAnswers.includes('אסף בגדים'), 'both parts answered');
+  await partsP.click('#sab-helper-host >> summary >> text=/המשימה כפי שהבנתי אותה/');
+  await partsP.waitForSelector('#sab-helper-host >> .taskmap >> text=/✓ ב: מטרת הטור/');
+  await partsP.waitForSelector('#sab-helper-host >> .taskmap >> text=/עזר לשאלה 1/');
+  console.log('✓ task map: no answer for a helper prompt, the missing part completed, "how I understood the task" shown');
+  await partsP.close();
 
   // a question left without an answer is completed automatically in the same solve
   skipIframeField = 1;

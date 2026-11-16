@@ -35,8 +35,8 @@ const CHIP: Record<RowKind, [string, string]> = { filled: ['מולא', 'ok'], un
 export function filterCounts(r: SolveResult, s: UIState): Record<Filter, number> {
   const kinds = r.answers.map((a) => answerKind(a, s));
   return {
-    all: r.answers.length + (r.missing?.length ?? 0) + (r.missingText?.length ?? 0),
-    missing: (r.missing?.length ?? 0) + (r.missingText?.length ?? 0),
+    all: r.answers.length + (r.missing?.length ?? 0) + (r.missingText?.length ?? 0) + (r.missingParts?.length ?? 0),
+    missing: (r.missing?.length ?? 0) + (r.missingText?.length ?? 0) + (r.missingParts?.length ?? 0),
     unfilled: kinds.filter((k) => k === 'unfilled').length,
     filled: kinds.filter((k) => k === 'filled').length,
   };
@@ -135,6 +135,35 @@ function cellsTable(ans: Answer): HTMLElement {
           cols.map((c) => h('td', {}, m.has(c) ? h('span', { class: 'hl' }, m.get(c)!) : '')),
         ),
       ),
+    ),
+  );
+}
+
+/** "How I understood the task": questions with their parts (answered or missing) and the helper prompts. */
+function taskMapBox(r: SolveResult): HTMLElement | null {
+  const map = r.taskMap ?? [];
+  if (!map.length) return null;
+  const missing = new Set((r.missingParts ?? []).map((p) => `${p.item}|${p.label}`));
+  const qs = map.filter((m) => m.kind === 'question');
+  const helpers = map.filter((m) => m.kind === 'helper');
+  const name = (id: string | null) => map.find((m) => m.id === id)?.number ?? map.find((m) => m.id === id)?.text.slice(0, 30) ?? '';
+  return h(
+    'details',
+    { class: 'skipped taskmap' },
+    h('summary', {}, `המשימה כפי שהבנתי אותה: ${qs.length} שאלות · ${qs.reduce((n, q) => n + Math.max(1, q.parts.length), 0)} סעיפים${helpers.length ? ` · ${helpers.length} הנחיות עזר` : ''}`),
+    h(
+      'div',
+      {},
+      qs.map((q) =>
+        h(
+          'div',
+          { class: 'tm-q' },
+          h('b', {}, q.number ?? q.text.slice(0, 40)),
+          q.number ? ` ${q.text.slice(0, 80)}` : '',
+          q.parts.length > 1 ? h('div', { class: 'tm-parts' }, q.parts.map((p) => h('div', {}, `${missing.has(`${q.id}|${p.label}`) ? '✗' : '✓'} ${p.label ? `${p.label}: ` : ''}${p.asks}`))) : null,
+        ),
+      ),
+      helpers.map((x) => h('div', { class: 'tm-h' }, `עזר${x.belongs_to ? ` ל${name(x.belongs_to)}` : ''} (לא עונים עליו): ${x.text.slice(0, 90)}`)),
     ),
   );
 }
@@ -270,7 +299,12 @@ function answersList(s: UIState, a: Actions): Rendered {
     else groups.push({ title, rows: [el] });
   };
   // questions in the text without an answer show as missing too ("שאלה 5", no field)
-  const gaps: { field_id: string; context: string; page?: number; section?: string }[] = [...(r.missing ?? []), ...(r.missingText ?? []).map((n) => ({ field_id: '', context: `שאלה ${n} (בטקסט של המשימה, בלי שדה)` }))];
+  const gaps: { field_id: string; context: string; page?: number; section?: string }[] = [
+    ...(r.missing ?? []),
+    ...(r.missingText ?? []).map((n) => ({ field_id: '', context: `שאלה ${n} (בטקסט של המשימה, בלי שדה)` })),
+    // a part of a question with no answer ("שאלה 3 · ב: לבסס על ציטוטים")
+    ...(r.missingParts ?? []).map((p) => ({ field_id: '', context: `${p.number ?? 'שאלה'} · סעיף ${p.label || '(ללא שם)'}: ${p.asks}`, ...(p.page ? { page: p.page } : {}) })),
+  ];
   for (const row of orderedRows(r.answers, gaps)) {
     if (row.kind === 'missing') {
       const m = gaps[row.index];
@@ -305,6 +339,7 @@ function answersList(s: UIState, a: Actions): Rendered {
         : grouped
           ? h('div', { class: 'answers grouped' }, groups.map((g) => h('div', { class: 'grp' }, h('div', { class: 'grp-t' }, g.title || 'בלי עמוד'), h('div', { class: 'list answers' }, g.rows))))
           : h('div', { class: 'list answers' }, rows),
+      taskMapBox(r),
       skippedBox(r),
       r.notes ? h('div', { class: 'note' }, r.notes) : null,
       sourcesList(r.sources),

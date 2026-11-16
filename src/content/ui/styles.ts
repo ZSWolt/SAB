@@ -249,6 +249,10 @@ textarea:focus, input:focus { outline: 2px solid var(--soft); border-color: var(
 .m.file .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skipped { font-size: 12px; color: var(--muted); }
 .skipped summary { cursor: pointer; }
+.taskmap .tm-q { color: var(--text); font-size: 13px; line-height: 20px; }
+.taskmap .tm-q b { font-weight: 500; }
+.taskmap .tm-parts { padding-inline-start: 12px; color: var(--text2); }
+.taskmap .tm-h { font-style: italic; }
 .skipped > div { padding: 6px 12px 0; display: flex; flex-direction: column; gap: 2px; }
 .hlist { display: flex; flex-direction: column; gap: 10px; }
 .hgrp { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }

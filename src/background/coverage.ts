@@ -44,6 +44,39 @@ export function attachOrphans(answers: Answer[], snaps: TaggedSnapshot[]): Answe
   });
 }
 
+const partKey = (p: string) => p.replace(/^\s*סעיף\s*/, '').replace(/["'׳״()]/g, '').trim();
+
+/**
+ * Checks the answers against the task map Claude wrote first:
+ * - answers written for a helper prompt or an instruction are dropped (and their fields are not
+ *   missing): a helper only helps build the answer to its question;
+ * - every part of a question with several parts needs an answer (item + part). An answer without a
+ *   part, or with several parts in one ("א, ב"), covers them.
+ */
+export function checkMap(result: SolveResult): Pick<SolveResult, 'answers' | 'skipped' | 'missingParts'> {
+  const map = result.taskMap ?? [];
+  if (!map.length) return { answers: result.answers, skipped: result.skipped, missingParts: [] };
+  const notQuestion = new Map(map.filter((m) => m.kind !== 'question').map((m) => [m.id, m]));
+  const skipped = [...(result.skipped ?? [])];
+  const answers = result.answers.filter((a) => {
+    const m = a.item ? notQuestion.get(a.item) : undefined;
+    if (!m) return true;
+    if (a.field_id) skipped.push({ field_id: a.field_id, reason: m.kind === 'helper' ? 'הנחיית עזר, לא עונים עליה בתיבה' : 'הוראה, לא שאלה' });
+    return false;
+  });
+  for (const m of notQuestion.values()) for (const id of m.field_ids ?? []) if (!skipped.some((s) => s.field_id === id) && !answers.some((a) => a.field_id === id)) skipped.push({ field_id: id, reason: m.kind === 'helper' ? 'הנחיית עזר, לא עונים עליה בתיבה' : 'הוראה, לא שאלה' });
+
+  const missingParts: NonNullable<SolveResult['missingParts']> = [];
+  for (const q of map) {
+    if (q.kind !== 'question' || (q.parts ?? []).length < 2) continue;
+    const mine = answers.filter((a) => a.item === q.id);
+    if (mine.some((a) => !partKey(a.part))) continue; // one answer for the whole question
+    const covered = new Set(mine.flatMap((a) => a.part.split(/[,،]/).map(partKey)));
+    for (const p of q.parts) if (!covered.has(partKey(p.label))) missingParts.push({ item: q.id, number: q.number, label: p.label, asks: p.asks, page: q.page });
+  }
+  return { answers, skipped, missingParts };
+}
+
 /** "שאלה N" headings in the page text: at the start of a line (not "כמו בשאלה 5" inside a sentence). */
 export function textQuestionNumbers(snaps: TaggedSnapshot[]): number[] {
   const nums = new Set<number>();
@@ -90,9 +123,11 @@ export function checkCoverage(snaps: TaggedSnapshot[], result: SolveResult, only
 }
 
 export function mergeResults(prev: SolveResult, next: SolveResult): SolveResult {
-  const byField = new Map(next.answers.filter((a) => a.field_id).map((a) => [a.field_id, a]));
-  const answers = prev.answers.map((a) => (a.field_id && byField.has(a.field_id) ? byField.get(a.field_id)! : a));
-  for (const a of next.answers) if (!a.field_id || !prev.answers.some((p) => p.field_id === a.field_id)) answers.push(a);
+  // the same field, or the same question part (item + part) for answers without a field
+  const key = (a: SolveResult['answers'][number]) => (a.field_id ? `f:${a.field_id}` : a.item ? `p:${a.item}|${partKey(a.part)}` : '');
+  const byKey = new Map(next.answers.filter((a) => key(a)).map((a) => [key(a), a]));
+  const answers = prev.answers.map((a) => (key(a) && byKey.has(key(a)) ? byKey.get(key(a))! : a));
+  for (const a of next.answers) if (!key(a) || !prev.answers.some((p) => key(p) === key(a))) answers.push(a);
   const seen = new Set<string>();
   return {
     ...prev,
@@ -101,6 +136,7 @@ export function mergeResults(prev: SolveResult, next: SolveResult): SolveResult 
     searches: [...prev.searches, ...next.searches],
     notes: [prev.notes, next.notes].filter(Boolean).join('\n'),
     topic: prev.topic || next.topic,
+    taskMap: prev.taskMap?.length ? prev.taskMap : next.taskMap,
     skipped: [...(prev.skipped ?? []).filter((s) => !next.answers.some((a) => a.field_id === s.field_id)), ...(next.skipped ?? [])],
     costUsd: prev.costUsd + next.costUsd,
   };

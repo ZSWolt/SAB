@@ -7,7 +7,7 @@ import type {
   BetaUsage,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { MODELS, type Settings } from '../shared/settings';
-import type { Answer, ReviewItem, ReviewResult, SolveResult, Source } from '../shared/types';
+import type { Answer, ReviewItem, ReviewResult, SolveResult, Source, TaskMapItem } from '../shared/types';
 
 export interface SolveCallbacks {
   onSearch(query: string): void;
@@ -26,16 +26,41 @@ const ANSWER_TOOL: BetaToolUnion = {
   input_schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['answers', 'sources', 'notes', 'skipped', 'topic'],
+    required: ['task_map', 'answers', 'sources', 'notes', 'skipped', 'topic'],
     properties: {
+      // first understand the task, then answer: the model writes the properties in this order
+      task_map: {
+        type: 'array',
+        description: 'מפת המשימה, לפני התשובות: כל שאלה, הסעיפים שלה (כל דרישה נפרדת היא סעיף), הנחיות עזר שלא עונים עליהן בנפרד, והוראות כלליות.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['id', 'number', 'page', 'kind', 'text', 'parts', 'field_ids', 'belongs_to'],
+          properties: {
+            id: { type: 'string', description: 'מזהה קצר: q1, q2…' },
+            number: { type: ['string', 'null'], description: 'המספר כמו במשימה ("שאלה 3"), או null' },
+            page: { type: ['integer', 'null'] },
+            kind: { type: 'string', enum: ['question', 'helper', 'instruction'], description: 'question = עונים עליה; helper = הנחיית עזר / שאלה מנחה ששייכת לשאלה ולא עונים עליה בנפרד; instruction = הוראה כללית או כותרת' },
+            text: { type: 'string', description: 'השאלה או ההנחיה בקיצור' },
+            parts: {
+              type: 'array',
+              description: 'סעיפים של שאלה: כל דרישה נפרדת ("תארו... ובססו על ציטוטים" = שני סעיפים). שאלה עם דרישה אחת: סעיף אחד עם label ריק.',
+              items: { type: 'object', additionalProperties: false, required: ['label', 'asks'], properties: { label: { type: 'string' }, asks: { type: 'string' } } },
+            },
+            field_ids: { type: 'array', items: { type: 'string' }, description: 'השדות של הפריט (מרשימת fields), אם יש' },
+            belongs_to: { type: ['string', 'null'], description: 'להנחיית עזר: ה-id של השאלה שהיא עוזרת לה' },
+          },
+        },
+      },
       answers: {
         type: 'array',
         description: 'תשובה לכל שאלה/סעיף, לפי הסדר בדף.',
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['question', 'part', 'page', 'how', 'answer', 'cells', 'matches', 'highlights', 'field_id', 'option'],
+          required: ['item', 'question', 'part', 'page', 'how', 'answer', 'cells', 'matches', 'highlights', 'field_id', 'option'],
           properties: {
+            item: { type: 'string', description: 'ה-id של השאלה ב-task_map' },
             question: { type: 'string', description: 'מספר/כותרת השאלה כמו בדף, למשל "שאלה 2".' },
             part: { type: 'string', description: 'הסעיף, למשל "א" – או מחרוזת ריקה.' },
             page: { type: ['integer', 'null'], description: 'מספר העמוד במשימה שבו השאלה נמצאת (לפי === עמוד N ===), או null.' },
@@ -118,6 +143,7 @@ const REVIEW_TOOL: BetaToolUnion = {
           additionalProperties: false,
           required: ['question', 'part', 'field_id', 'grade', 'correct', 'missing', 'improved'],
           properties: {
+            item: { type: 'string' },
             question: { type: 'string' },
             part: { type: 'string' },
             field_id: { type: ['string', 'null'] },
@@ -150,8 +176,9 @@ const UPDATE_TOOL: BetaToolUnion = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['question', 'part', 'page', 'how', 'answer', 'cells', 'matches', 'highlights', 'field_id', 'option'],
+          required: ['item', 'question', 'part', 'page', 'how', 'answer', 'cells', 'matches', 'highlights', 'field_id', 'option'],
           properties: {
+            item: { type: 'string' },
             question: { type: 'string' },
             part: { type: 'string' },
             page: { type: ['integer', 'null'] },
@@ -235,7 +262,7 @@ export function parseReview(input: unknown): { items: ReviewItem[]; overall: str
 }
 
 /** Validates the tool input: the streamed JSON can come back cut off. */
-export function parseAnswers(input: unknown): { answers: Answer[]; sources: Source[]; notes: string; skipped: { field_id: string; reason: string }[]; topic: string } | null {
+export function parseAnswers(input: unknown): { answers: Answer[]; sources: Source[]; notes: string; skipped: { field_id: string; reason: string }[]; topic: string; taskMap: TaskMapItem[] } | null {
   const x = input as Record<string, unknown>;
   if (!x || !Array.isArray(x.answers) || !x.answers.every(isAnswer)) return null;
   const sources = Array.isArray(x.sources)
@@ -244,7 +271,8 @@ export function parseAnswers(input: unknown): { answers: Answer[]; sources: Sour
   const skipped = Array.isArray(x.skipped)
     ? (x.skipped as { field_id: string; reason: string }[]).filter((s) => s && typeof s.field_id === 'string').map((s) => ({ field_id: s.field_id, reason: String(s.reason ?? '') }))
     : [];
-  return { answers: x.answers, sources, notes: typeof x.notes === 'string' ? x.notes : '', skipped, topic: typeof x.topic === 'string' ? x.topic.trim() : '' };
+  const taskMap = Array.isArray(x.task_map) ? (x.task_map as TaskMapItem[]).filter((t) => t && typeof t.id === 'string' && typeof t.kind === 'string') : [];
+  return { answers: x.answers, sources, notes: typeof x.notes === 'string' ? x.notes : '', skipped, topic: typeof x.topic === 'string' ? x.topic.trim() : '', taskMap };
 }
 
 function cost(model: string, usage: BetaUsage | undefined, searches: number): number {
