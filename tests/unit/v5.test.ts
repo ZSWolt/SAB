@@ -127,6 +127,16 @@ describe('defaults', () => {
 import { buildPageText } from '../../src/ai/prompt';
 import { wantsOnlyEmpty } from '../../src/content/ui/panel';
 
+describe('fixed instructions from the settings', () => {
+  it('lead the chat instructions and apply to every chat reply', () => {
+    const p = chatSystemPrompt({ ...DEFAULT_SETTINGS, extraInstructions: 'תמיד תענה באנגלית' });
+    expect(p).toContain('תמיד תענה באנגלית');
+    expect(p.indexOf('תמיד תענה באנגלית')).toBeLessThan(p.indexOf('## איך לענות בשיחה'));
+    expect(p).toContain('בכל הודעה שאתה כותב בשיחה');
+    expect(chatSystemPrompt(DEFAULT_SETTINGS)).not.toContain('הוראות קבועות של התלמיד');
+  });
+});
+
 describe('the student note comes first', () => {
   const base = { mode: 'solve' as const, snaps: [snap], opener: [], stories: [], pdfs: [], videos: [], missingVideos: [], previousPages: '' };
   it('a note replaces "answer every question" with "do what the note says"', () => {

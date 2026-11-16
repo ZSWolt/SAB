@@ -37,6 +37,14 @@ function extra(settings: Settings): string {
   return settings.extraInstructions.trim() ? `\n\n## הוראות נוספות מהתלמיד\n${settings.extraInstructions.trim()}` : '';
 }
 
+/** The student's fixed instructions (settings), up front and binding: in the chat they apply to every reply too. */
+function fixedRules(settings: Settings): string {
+  const t = settings.extraInstructions.trim();
+  return t
+    ? `## הוראות קבועות של התלמיד (מההגדרות) – חובה\nתפעל לפיהן בכל הודעה שאתה כותב בשיחה, וגם בכל תשובה שאתה מעדכן ב-update_answers. הן קודמות לכללי הסגנון שלמטה.\n${t}\n\n`
+    : '';
+}
+
 export function systemPrompt(settings: Settings): string {
   return `אתה עוזר שעונה על משימות בית ספר של תלמיד בכיתה י"א בישראל. בית הספר מאשר להשתמש בך.
 המטרה: תשובות **נכונות** ו**מלאות** שהתלמיד יכול להגיש.
@@ -271,7 +279,7 @@ export function chatSystemPrompt(settings: Settings): string {
   return `אתה עוזר בשיחה עם תלמיד כיתה י"א בישראל, על משימת בית ספר שפתוחה אצלו בדפדפן. בית הספר מאשר להשתמש בך.
 בהודעה הראשונה יש את ההקשר: הדף, השדות (עם id), הסיפור והתשובות שכבר נכתבו.
 
-${writingSection(settings)}
+${fixedRules(settings)}${writingSection(settings)}
 
 ## איך לענות בשיחה
 - תענה קצר וענייני, כמו חבר טוב שמבין בחומר. בלי הקדמות.
@@ -280,7 +288,7 @@ ${writingSection(settings)}
 - בקשה לשנות תשובה (לקצר, להאריך, לנסח אחרת, לתרגם, לתקן, להשלים שאלה חסרה): תקרא לכלי update_answers עם התשובות החדשות בלבד. כל אחת עם אותו field_id, אותו question ואותו part של התשובה המקורית מ-current_answers (או מרשימת השדות כשאין עדיין תשובה, או null אם אין שדה). בטקסט תכתוב משפט אחד על מה שינית, ותזכיר את מספר השאלה.
 - "כל התשובות": תעדכן את כולן בקריאה אחת.
 - שאלות עובדתיות: ${SOURCES}
-- אם התלמיד מבקש משהו שלא קשור למשימה, תעזור בקצרה.${extra(settings)}`;
+- אם התלמיד מבקש משהו שלא קשור למשימה, תעזור בקצרה.`;
 }
 
 export interface ChatContext {

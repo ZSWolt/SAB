@@ -319,12 +319,23 @@ try {
   // chat tab: ask to shorten answer 1 → text streams in, an "updated" card, fill it, and the board shows it
   // the panel sends the answers on screen with the chat, so it works even if the tab's stored result is gone
   await sw.evaluate(async () => chrome.storage.session.set({ results: {} }));
+  // a fixed instruction from the settings must reach the chat too
+  await sw.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({ settings: { ...settings, extraInstructions: 'תמיד תכתוב בגוף ראשון' } });
+  });
   await page.click('#sab-helper-host >> .tabbar >> text=שיחה');
   await page.fill('#sab-helper-host >> .cbox textarea', 'תקצר את תשובה 1');
   await page.press('#sab-helper-host >> .cbox textarea', 'Enter');
   await page.waitForSelector('#sab-helper-host >> .msg-bot >> text=/קיצרתי את תשובה 1/', { timeout: 20000 });
   const chatReq = requests.at(-1).body;
   assert.ok(chatReq.tools.some((t) => t.name === 'update_answers'));
+  const sys = Array.isArray(chatReq.system) ? chatReq.system.map((b) => b.text).join('\n') : String(chatReq.system);
+  assert.ok(sys.includes('תמיד תכתוב בגוף ראשון') && sys.includes('בכל הודעה שאתה כותב בשיחה'), 'settings instructions are in the chat');
+  await sw.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({ settings: { ...settings, extraInstructions: '' } });
+  });
   assert.deepEqual(chatReq.messages[0].content[0].cache_control, { type: 'ephemeral' }, 'chat context is cached');
   const chatCtx = chatReq.messages[0].content.map((c) => c.text ?? '').join('\n');
   const sent = JSON.parse(chatCtx.match(/<current_answers[^>]*>\n([\s\S]*?)\n<\/current_answers>/)[1]);
