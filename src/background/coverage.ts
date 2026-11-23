@@ -7,7 +7,7 @@ const allFields = (snaps: TaggedSnapshot[]): Field[] => snaps.flatMap((s) => s.f
 
 /** "שאלה 3" in a field's text (its first lines), as a number. */
 function fieldNumber(context: string): number | undefined {
-  const m = context.slice(0, 300).match(/שאלה\s*(\d{1,3})(?!\d)/);
+  const m = context.slice(0, 300).match(/(?:שאלה|\bquestion|\bq)\s*\.?\s*(\d{1,3})(?!\d)/i);
   return m ? Number(m[1]) : undefined;
 }
 
@@ -82,7 +82,7 @@ export function textQuestionNumbers(snaps: TaggedSnapshot[]): number[] {
   const nums = new Set<number>();
   for (const s of snaps) {
     for (const line of s.fullText.split('\n')) {
-      const m = line.trim().match(/^(?:===.*?===\s*)?שאלה\s*(\d{1,3})(?!\d)/);
+      const m = line.trim().match(/^(?:===.*?===\s*)?(?:שאלה|question)\s*(\d{1,3})(?!\d)/i);
       if (m) nums.add(Number(m[1]));
     }
   }

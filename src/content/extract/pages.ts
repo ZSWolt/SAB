@@ -30,7 +30,7 @@ function ownNumber(el: Element): number | null {
 }
 
 function isCandidate(el: Element): boolean {
-  if (el.closest('label, select, option, table, #sab-helper-host, [role="radiogroup"], [role="listbox"]')) return false;
+  if (el.closest('label, select, option, table, #sab-helper-host, [role="radiogroup"], [role="listbox"], #mod_quiz_navblock, .qn_buttons, .qnbutton, [data-quiz-page]')) return false;
   if (el.querySelector('input, textarea, select')) return false;
   return isRendered(el);
 }
@@ -75,6 +75,9 @@ function currentPage(buttons: HTMLElement[], container: Element): number {
 }
 
 export function findPagination(doc: Document = document): Pagination | null {
+  // Moodle quiz: its navigation (Quiz navigation 1 2 3, Next page) loads a new page; never walk it,
+  // each page is solved on its own and the task memory links them
+  if (/\/mod\/quiz\//.test(doc.location?.pathname ?? '') || doc.querySelector('body#page-mod-quiz-attempt')) return null;
   const cands: { el: HTMLElement; n: number }[] = [];
   doc.querySelectorAll('button, a, li, span, div, [role="button"], [role="tab"], [role="link"]').forEach((el) => {
     const n = ownNumber(el);

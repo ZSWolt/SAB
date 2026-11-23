@@ -5,13 +5,13 @@
  */
 // whole words only (with an optional ו / ו+ה before): "ענו" must not match inside "טענות"
 const VERB_RE =
-  /(?:^|[^א-תa-z])(?:ו)?(כתבו|כתוב|הסבירו|הסבר|נמקו|נמק|השוו|השווה|ציינו|ציין|תארו|תאר|הביאו|הבא|בחרו|בחר|סמנו|סמן|קבעו|קבע|גררו|גרור|התאימו|התאם|הציגו|הצג|פרטו|פרט|מיינו|דרגו|ענו|ענה|השלימו|השלם|הוכיחו|הראו|התייחסו|חוו דעתכם|נסחו|explain|describe|compare|choose|write|answer)(?![א-תa-z])/i;
+  /(?:^|[^א-תa-z])(?:ו)?(כתבו|כתוב|הסבירו|הסבר|נמקו|נמק|השוו|השווה|ציינו|ציין|תארו|תאר|הביאו|הבא|בחרו|בחר|סמנו|סמן|קבעו|קבע|גררו|גרור|התאימו|התאם|הציגו|הצג|פרטו|פרט|מיינו|דרגו|ענו|ענה|השלימו|השלם|הוכיחו|הראו|התייחסו|חוו דעתכם|נסחו|explain|describe|compare|choose|write|answer|complete|fill in|match|true or false|circle|underline)(?![א-תa-z])/i;
 
 export function looksLikeQuestion(text: string): boolean {
   const t = text.replace(/\s+/g, ' ').trim();
   if (!t) return false;
   if (/[?؟]/.test(t)) return true;
-  if (/שאלה\s*(\d{1,2}|[א-ת]['׳]?)(?![א-ת])/.test(t) || /^\d{1,2}[.)]\s/.test(t)) return true;
+  if (/שאלה\s*(\d{1,2}|[א-ת]['׳]?)(?![א-ת])/.test(t) || /\bquestion\s*\d{1,2}/i.test(t) || /^\d{1,2}[.)]\s/.test(t)) return true;
   return VERB_RE.test(t);
 }
 

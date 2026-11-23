@@ -94,6 +94,17 @@ function mockAnswer(body) {
         ];
     return toolEvents(body, 'submit_answers', JSON.stringify({ task_map, answers, sources: [], notes: '', skipped: [], topic: 'העצורים בקפריסין' }));
   }
+  // Moodle quiz in English: answers in English, numbered like the quiz
+  if (text.includes('Why did Tom decide to leave the city')) {
+    const base = { how: null, cells: null, matches: null, highlights: null, page: null, item: '' };
+    const ed = fields.find((f) => f.kind === 'richtext');
+    const mc = fields.find((f) => f.kind === 'radio');
+    const answers = [
+      { ...base, question: 'Question 1', part: '', answer: 'Tom left because he felt lonely in the city. He wanted a quiet life near his family.', field_id: ed?.id ?? null, option: null },
+      { ...base, question: 'Question 2', part: '', answer: 'The text shows how much friends help Tom.', field_id: mc?.id ?? null, option: 'a. Friendship is important' },
+    ];
+    return toolEvents(body, 'submit_answers', JSON.stringify({ task_map: [], answers, sources: [], notes: '', skipped: [], topic: 'Unit 3 Reading' }));
+  }
   // first time on the main task page: "forget" the field in the iframe, to test "complete the missing ones"
   const isOnly = text.includes('תענה **רק** עליהם');
   const forget = skipIframeField > 0 && fields.some((f) => f.kind === 'text');
@@ -177,7 +188,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/pdf' });
     return res.end('%PDF-1.4\n% fake story pdf for the test\n%%EOF');
   }
-  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/classe.html': 'classe.html', '/activities.html': 'activities.html', '/parts.html': 'parts.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
+  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/classe.html': 'classe.html', '/activities.html': 'activities.html', '/parts.html': 'parts.html', '/moodle-quiz.html': 'moodle-quiz.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
   if (!file) return res.writeHead(404).end();
   let html = readFileSync(resolve('tests/fixtures', file), 'utf8');
   // the iframe is served from another origin (127.0.0.1 vs localhost) to test cross-origin frames
@@ -690,6 +701,23 @@ try {
   await partsP.waitForSelector('#sab-helper-host >> .taskmap >> text=/עזר לשאלה 1/');
   console.log('✓ task map: no answer for a helper prompt, the missing part completed, "how I understood the task" shown');
   await partsP.close();
+
+  // Moodle quiz in English: no clicking on the quiz navigation (it loads another page), numbering, filling
+  const mq = await ctx.newPage();
+  await mq.goto(`http://localhost:${port}/moodle-quiz.html?page=0`);
+  await mq.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await mq.keyboard.press('Alt+Shift+A');
+  await mq.waitForSelector('#sab-helper-host >> .rl >> text=2/2', { timeout: 30000 });
+  assert.ok(mq.url().endsWith('page=0'), `stayed on the same quiz page: ${mq.url()}`);
+  const mqFields = JSON.parse(requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n').match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
+  assert.deepEqual(mqFields.map((f) => f.kind), ['richtext', 'radio']);
+  const mqLabels = await mq.evaluate(() => [...document.querySelector('#sab-helper-host').shadowRoot.querySelectorAll('.answers .qbadge')].map((b) => b.textContent));
+  assert.deepEqual(mqLabels, ['שאלה 1', 'שאלה 2']);
+  await mq.click('#sab-helper-host >> text=/מלא הכול בדף/');
+  await mq.waitForFunction(() => document.querySelector('#m1').textContent.includes('Tom left because') && document.querySelector('#m2a').checked);
+  assert.ok(mq.url().endsWith('page=0'), 'filling did not navigate either');
+  console.log('✓ Moodle quiz in English: stays on its page, "Question N" numbering, editor and choice filled');
+  await mq.close();
 
   // a question left without an answer is completed automatically in the same solve
   skipIframeField = 1;

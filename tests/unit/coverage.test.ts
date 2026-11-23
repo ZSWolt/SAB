@@ -89,3 +89,19 @@ describe('the task map', () => {
     expect(mergeResults(prev, next).answers.map((a) => a.answer)).toEqual(['חדש']);
   });
 });
+
+import { questionNumber, orderedRows } from '../../src/shared/labels';
+import { findPagination } from '../../src/content/extract/pages';
+
+describe('English (Moodle) courses', () => {
+  it('reads "Question 3" like "שאלה 3"', () => {
+    expect(questionNumber('Question 3')).toBe(3);
+    expect(questionNumber('Q2')).toBe(2);
+    expect(textQuestionNumbers([snap([], 'Question 1\nRead the text.\nQuestion 2 (2 points)\nChoose')])).toEqual([1, 2]);
+    expect(orderedRows([{ question: 'Question 2', part: '' }, { question: 'Question 1', part: '' }]).map((r) => r.label)).toEqual(['שאלה 1', 'שאלה 2']);
+  });
+  it('never walks the Moodle quiz navigation (it loads a new page)', () => {
+    document.body.innerHTML = `<div id="mod_quiz_navblock">${[1, 2, 3, 4].map((n) => `<a class="qnbutton" href="?page=${n}">${n}</a>`).join('')}</div><textarea></textarea>`;
+    expect(findPagination()).toBeNull();
+  });
+});

@@ -46,7 +46,7 @@ const HEB = 'אבגדהוזחטיכלמנסעפצקרשת';
  * a date inside a title is not one → undefined.
  */
 export function questionNumber(text: string): number | undefined {
-  const q = text.match(/שאלה\s*(\d{1,3})(?!\d)/);
+  const q = text.match(/(?:שאלה|\bquestion|\bq)\s*\.?\s*(\d{1,3})(?!\d)/i);
   if (q) return Number(q[1]);
   const lead = text.match(/^\s*(\d{1,3})(?![\d/.:-]\d)/);
   if (lead && !/^\s*\d{1,3}\s*[-/.]\s*\d/.test(text)) return Number(lead[1]);
@@ -55,7 +55,12 @@ export function questionNumber(text: string): number | undefined {
   return m ? HEB.indexOf(m[1].replace(/[ךםןףץ]/, (c) => 'כמנפצ'['ךםןףץ'.indexOf(c)])) + 1 || undefined : undefined;
 }
 
-const MISSING_NUM = /שאלה\s*(\d{1,3}|[א-ת]['׳]?)(?![א-ת])/;
+/** "שאלה 3", "שאלה ב׳", "Question 3", "Q3" → the number (or letter) as written. */
+const Q_RE = /(?:שאלה\s*(\d{1,3}|[א-ת]['׳]?)(?![א-ת])|\b(?:question|q)\s*\.?\s*(\d{1,3})(?!\d))/i;
+const rawNum = (t: string): string | undefined => {
+  const m = t.match(Q_RE);
+  return m ? (m[1] ?? m[2]) : undefined;
+};
 
 function partRank(part: string): string {
   const p = part.trim().replace(/^סעיף\s*/, '');
@@ -95,7 +100,7 @@ interface Keyed {
  */
 /** The task's own number for a question: "שאלה 4" in the page text, else what Claude wrote. */
 function taskNumber(questionText: string | undefined, question: string): number | undefined {
-  const fromPage = questionText?.match(MISSING_NUM)?.[1];
+  const fromPage = (questionText ? rawNum(questionText) : undefined);
   if (fromPage) return questionNumber(fromPage);
   return questionNumber(question);
 }
@@ -117,7 +122,7 @@ export function orderedRows(
     keyed.push({ kind: 'answer', index: i, page, num: n ?? lastNum + 0.5, part: partRank(a.part), pos: i, question: a.question, partText: a.part, explicit: n });
   });
   missing.forEach((m, i) => {
-    const raw = m.context.match(MISSING_NUM)?.[1];
+    const raw = rawNum(m.context);
     const n = raw ? questionNumber(raw) : undefined;
     keyed.push({ kind: 'missing', index: i, page: pageOf(m.page, m.field_id), num: n ?? Number.MAX_SAFE_INTEGER, part: '', pos: answers.length + i, question: raw ?? '', partText: '', explicit: n });
   });
