@@ -227,7 +227,8 @@ function matchTable(ans: Answer): HTMLElement {
   return h(
     'table',
     { class: 'atable' },
-    h('tbody', {}, (ans.matches ?? []).map((m) => h('tr', {}, h('td', { class: 'rl' }, m.from), h('td', {}, '← ', h('span', { class: 'hl' }, m.to))))),
+    // a blank number shows as "חור 3"
+    h('tbody', {}, (ans.matches ?? []).map((m) => h('tr', {}, h('td', { class: 'rl' }, /^\d{1,3}$/.test(m.to.trim()) ? `חור ${m.to.trim()}` : m.to), h('td', {}, h('span', { class: 'hl' }, m.from))))),
   );
 }
 

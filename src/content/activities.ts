@@ -1,4 +1,5 @@
 import { PANEL_HOST_ID } from './text';
+import { draggables, dropzones } from './extract/h5p';
 
 /**
  * Activities without answer fields (CET and similar):
@@ -106,9 +107,70 @@ export function findTextRange(text: string, doc: Document = document): Range | n
   return range;
 }
 
+/** Dropped already? The item sits in the zone, or the activity marked it as placed. */
+function placed(item: HTMLElement, zone: HTMLElement): boolean {
+  return zone.contains(item) || /dropped|placed|h5p-drag-dropped/.test(`${item.className} ${zone.className}`) || zone.getAttribute('aria-grabbed') === 'false' && zone.textContent?.includes(item.textContent ?? '\u0000') === true;
+}
+
+function key(el: Element, k: string) {
+  for (const type of ['keydown', 'keyup']) el.dispatchEvent(new KeyboardEvent(type, { key: k, code: k === ' ' ? 'Space' : k, keyCode: k === ' ' ? 32 : 13, which: k === ' ' ? 32 : 13, bubbles: true, cancelable: true }));
+}
+
+/** A mouse drag, the way drag libraries (jQuery UI in H5P) listen: down on the item, moves and up over the zone. */
+async function mouseDrag(from: HTMLElement, to: HTMLElement) {
+  const a = point(from);
+  const b = point(to);
+  const doc = from.ownerDocument;
+  from.dispatchEvent(new PointerEvent('pointerdown', { ...a, pointerId: 1, isPrimary: true, button: 0, buttons: 1 }));
+  from.dispatchEvent(new MouseEvent('mousedown', { ...a, button: 0, buttons: 1 }));
+  for (let i = 1; i <= 8; i++) {
+    const p = { ...a, clientX: a.clientX + ((b.clientX - a.clientX) * i) / 8, clientY: a.clientY + ((b.clientY - a.clientY) * i) / 8, buttons: 1 };
+    doc.dispatchEvent(new PointerEvent('pointermove', { ...p, pointerId: 1, isPrimary: true }));
+    doc.dispatchEvent(new MouseEvent('mousemove', p));
+    await sleep(15);
+  }
+  to.dispatchEvent(new PointerEvent('pointerup', { ...b, pointerId: 1, isPrimary: true, button: 0 }));
+  to.dispatchEvent(new MouseEvent('mouseup', { ...b, button: 0 }));
+  doc.dispatchEvent(new MouseEvent('mouseup', { ...b, button: 0 }));
+}
+
+/** Puts a draggable word/item into a blank or zone: the keyboard way first (H5P supports it), then the mouse. */
+async function dropInto(item: HTMLElement, zone: HTMLElement): Promise<boolean> {
+  item.focus?.();
+  key(item, 'Enter');
+  await sleep(80);
+  zone.focus?.();
+  key(zone, 'Enter');
+  await sleep(150);
+  if (placed(item, zone)) return true;
+  await mouseDrag(item, zone);
+  await sleep(200);
+  if (placed(item, zone)) return true;
+  drag(item, zone); // HTML5 drag and drop
+  await sleep(150);
+  return placed(item, zone);
+}
+
 export async function runActivity(act: { matches?: { from: string; to: string }[] | null; highlights?: { label: string; text: string }[] | null }, doc: Document = document): Promise<ActivityResult> {
   const out: ActivityResult = { done: 0, total: 0, misses: [] };
+  // drag activities: "to" is a blank number ("3") or a zone's name; "from" is the word / item
+  const zones = dropzones(doc);
+  const items = draggables(doc);
   for (const m of act.matches ?? []) {
+    if (!zones.length || !items.length) break;
+    const want = norm(m.from);
+    const item = items.find((d) => norm(d.textContent ?? '') === want && !zones.some((z) => z.contains(d))) ?? items.find((d) => norm(d.textContent ?? '') === want);
+    const n = Number(m.to.match(/^\D*(\d{1,3})\D*$/)?.[1]);
+    const zone = Number.isFinite(n) && n >= 1 && n <= zones.length ? zones[n - 1] : zones.find((z) => norm(z.getAttribute('aria-label') ?? z.textContent ?? '') === norm(m.to));
+    out.total++;
+    if (!item || !zone) {
+      out.misses.push(!item ? m.from : m.to);
+      continue;
+    }
+    if (await dropInto(item, zone)) out.done++;
+    else out.misses.push(`${m.from} → ${m.to}`);
+  }
+  for (const m of zones.length && items.length ? [] : act.matches ?? []) {
     out.total++;
     const from = findByText(m.from, doc);
     const to = findByText(m.to, doc);

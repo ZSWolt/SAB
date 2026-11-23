@@ -94,6 +94,17 @@ function mockAnswer(body) {
         ];
     return toolEvents(body, 'submit_answers', JSON.stringify({ task_map, answers, sources: [], notes: '', skipped: [], topic: 'העצורים בקפריסין' }));
   }
+  // drag activities (H5P): words into numbered blanks, items onto named zones
+  if (text.includes('[פעילות גרירה: גוררים מילים')) {
+    return toolEvents(body, 'submit_answers', JSON.stringify({ task_map: [], skipped: [], sources: [], notes: '', topic: 'Volunteering', answers: [
+      { item: '', how: 'גרור כל מילה לחור', cells: null, highlights: null, page: null, question: 'Drag the words', part: '', answer: '[[1]] time, [[2]] shelter', field_id: null, option: null, matches: [{ from: 'time', to: '1' }, { from: 'shelter', to: '2' }] },
+    ] }));
+  }
+  if (text.includes('[פעילות גרירה: גוררים פריטים לאזורים')) {
+    return toolEvents(body, 'submit_answers', JSON.stringify({ task_map: [], skipped: [], sources: [], notes: '', topic: 'Music', answers: [
+      { item: '', how: 'גרור כל כלי למשפחה שלו', cells: null, highlights: null, page: null, question: 'Drag and drop', part: '', answer: 'violin ← Strings, drum ← Percussion', field_id: null, option: null, matches: [{ from: 'violin', to: 'Strings' }, { from: 'drum', to: 'Percussion' }] },
+    ] }));
+  }
   // Moodle quiz in English: answers in English, numbered like the quiz
   if (text.includes('Why did Tom decide to leave the city')) {
     const base = { how: null, cells: null, matches: null, highlights: null, page: null, item: '' };
@@ -188,7 +199,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/pdf' });
     return res.end('%PDF-1.4\n% fake story pdf for the test\n%%EOF');
   }
-  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/classe.html': 'classe.html', '/activities.html': 'activities.html', '/parts.html': 'parts.html', '/moodle-quiz.html': 'moodle-quiz.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
+  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/classe.html': 'classe.html', '/activities.html': 'activities.html', '/parts.html': 'parts.html', '/moodle-quiz.html': 'moodle-quiz.html', '/h5p-words.html': 'h5p-words.html', '/h5p-zones.html': 'h5p-zones.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
   if (!file) return res.writeHead(404).end();
   let html = readFileSync(resolve('tests/fixtures', file), 'utf8');
   // the iframe is served from another origin (127.0.0.1 vs localhost) to test cross-origin frames
@@ -718,6 +729,34 @@ try {
   assert.ok(mq.url().endsWith('page=0'), 'filling did not navigate either');
   console.log('✓ Moodle quiz in English: stays on its page, "Question N" numbering, editor and choice filled');
   await mq.close();
+
+  // H5P drag activities: described for Claude, shown as blank → word, and dragged on the page
+  for (const [file, check] of [
+    ['h5p-words.html', async (p) => {
+      const t = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
+      assert.ok(t.includes('[[1]] to help others') && t.includes('מילים לגרירה: shelter | time | money'), 'drag-the-words described with numbered blanks');
+      await p.waitForSelector('#sab-helper-host >> .atable >> text=חור 1');
+      await p.click('#sab-helper-host >> text=/מלא הכול בדף/');
+      await p.waitForFunction(() => window.__drops.length === 2, null, { timeout: 15000 });
+      assert.deepEqual(await p.evaluate(() => [...document.querySelectorAll('.h5p-drag-dropzone')].map((z) => z.textContent.trim())), ['time', 'shelter']);
+    }],
+    ['h5p-zones.html', async (p) => {
+      const t = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
+      assert.ok(t.includes('אזורים: 1. Strings | 2. Percussion'), 'drag-and-drop zones described');
+      await p.click('#sab-helper-host >> text=/מלא הכול בדף/');
+      await p.waitForFunction(() => Object.keys(window.__zones).length === 2, null, { timeout: 15000 });
+      assert.deepEqual(await p.evaluate(() => window.__zones), { violin: 'Strings', drum: 'Percussion' });
+    }],
+  ]) {
+    const hp = await ctx.newPage();
+    await hp.goto(`http://localhost:${port}/${file}`);
+    await hp.waitForSelector('#sab-helper-host', { state: 'attached' });
+    await hp.keyboard.press('Alt+Shift+A');
+    await hp.waitForSelector('#sab-helper-host >> .rl >> text=1/1', { timeout: 30000 });
+    await check(hp);
+    await hp.close();
+  }
+  console.log('✓ H5P drag activities: words into numbered blanks (keyboard) and items onto zones (mouse drag)');
 
   // a question left without an answer is completed automatically in the same solve
   skipIframeField = 1;

@@ -1,0 +1,26 @@
+<!doctype html><html lang="en" dir="ltr"><head><meta charset="utf-8"><title>Unit 5: Volunteering</title></head>
+<body>
+  <h1>Unit 5: Volunteering</h1>
+  <p>Drag the words into the correct boxes.</p>
+  <div class="h5p-drag-text">
+    <p>Volunteers give their <span class="h5p-drag-dropzone" tabindex="0" aria-dropeffect="move"></span> to help others. Many teens volunteer at an animal <span class="h5p-drag-dropzone" tabindex="0" aria-dropeffect="move"></span>.</p>
+    <div class="h5p-drag-draggables-container">
+      <span class="h5p-drag-draggable" tabindex="0" aria-grabbed="false">shelter</span>
+      <span class="h5p-drag-draggable" tabindex="0" aria-grabbed="false">time</span>
+      <span class="h5p-drag-draggable" tabindex="0" aria-grabbed="false">money</span>
+    </div>
+    <div class="h5p-question-buttons"><button>Check</button></div>
+  </div>
+  <script>
+    // like H5P drag-the-words with the keyboard: Enter on a word picks it, Enter on a blank drops it
+    let picked = null;
+    window.__drops = [];
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const w = e.target.closest('.h5p-drag-draggable');
+      const z = e.target.closest('.h5p-drag-dropzone');
+      if (w) { picked = w; w.setAttribute('aria-grabbed', 'true'); }
+      else if (z && picked) { z.appendChild(picked); picked.setAttribute('aria-grabbed', 'false'); window.__drops.push(picked.textContent); picked = null; }
+    });
+  </script>
+</body></html>

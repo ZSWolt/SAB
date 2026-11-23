@@ -1,0 +1,22 @@
+<!doctype html><html lang="en" dir="ltr"><head><meta charset="utf-8"><title>Unit 6: Music</title>
+<style>.h5p-dropzone{display:inline-block;width:160px;height:60px;border:1px dashed #999;margin:10px}.h5p-draggable{display:inline-block;padding:6px;border:1px solid #333;margin:6px;cursor:move}</style></head>
+<body>
+  <h1>Unit 6: Music</h1>
+  <p>Drag each instrument to its family.</p>
+  <div class="h5p-dragquestion">
+    <div class="h5p-dropzone" aria-label="Strings"></div><div class="h5p-dropzone" aria-label="Percussion"></div>
+    <div><div class="h5p-draggable">violin</div><div class="h5p-draggable">drum</div></div>
+  </div>
+  <script>
+    // like H5P drag-and-drop with the mouse (jQuery UI style: down on the item, up anywhere)
+    let dragging = null;
+    window.__zones = {};
+    document.addEventListener('mousedown', (e) => { dragging = e.target.closest('.h5p-draggable'); });
+    document.addEventListener('mouseup', (e) => {
+      if (!dragging) return;
+      const z = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el.classList.contains('h5p-dropzone'));
+      if (z) { z.appendChild(dragging); dragging.classList.add('h5p-dropped'); window.__zones[dragging.textContent] = z.getAttribute('aria-label'); }
+      dragging = null;
+    });
+  </script>
+</body></html>

@@ -8,6 +8,7 @@ import { findPagination } from './pages';
 import { isRendered } from '../text';
 import { looksLikeQuestion } from '../../shared/questions';
 import { isBoilerplate, isWidgetFrame } from './boilerplate';
+import { describeDrag } from './h5p';
 
 const MAX_PAGE_TEXT = 60000;
 
@@ -108,7 +109,8 @@ export function extractFrame(doc: Document = document): FrameSnapshot {
     adapter,
     fields,
     story: found?.info,
-    fullText: found?.element === doc.body ? '' : fullText,
+    // a drag activity (no fields): its text with numbered blanks, the words and the zones
+    fullText: [found?.element === doc.body ? '' : fullText, describeDrag(doc)].filter(Boolean).join('\n\n'),
     videos: findVideos(doc),
     documents: findDocuments(doc),
     pagesFound: findPagination(doc)?.buttons.length,
