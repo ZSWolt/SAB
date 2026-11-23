@@ -94,6 +94,31 @@ function mockAnswer(body) {
         ];
     return toolEvents(body, 'submit_answers', JSON.stringify({ task_map, answers, sources: [], notes: '', skipped: [], topic: 'העצורים בקפריסין' }));
   }
+  // Moodle question types and H5P content types, built like their real markup
+  const by = (needle) => fields.find((f) => (f.question_text ?? '').includes(needle));
+  const ans = (f, extra) => ({ item: '', how: null, cells: null, matches: null, highlights: null, page: null, part: '', answer: 'because', option: null, question: '', field_id: f?.id ?? null, ...extra });
+  if (text.includes('What is the capital of France')) {
+    const answers = [
+      ans(by('capital of France'), { question: 'Question 1', option: 'a. Paris' }),
+      ans(by('The sun is a star'), { question: 'Question 2', option: 'True' }),
+      ans(by('פריט: big'), { question: 'Question 3', part: 'big', option: 'large' }),
+      ans(by('פריט: tiny'), { question: 'Question 3', part: 'tiny', option: 'small' }),
+      ans(by('החור: Every morning I ____'), { question: 'Question 4', part: '1', option: 'go' }),
+      ans(by('four I ____ home'), { question: 'Question 4', part: '2', option: 'come' }),
+      ans(null, { question: 'Question 5', answer: '[[1]] mat, [[2]] door', matches: [{ from: 'mat', to: '1' }, { from: 'door', to: '2' }] }),
+    ];
+    return toolEvents(body, 'submit_answers', JSON.stringify({ task_map: [], skipped: [], sources: [], notes: '', topic: 'Grammar', answers }));
+  }
+  if (text.includes('How many friends does Sam have')) {
+    const answers = [
+      ans(fields.find((f) => (f.options ?? []).includes('Two')), { question: '1', option: 'Two' }),
+      ans(fields.find((f) => (f.options ?? []).includes('True')), { question: '2', option: 'True' }),
+      ans(fields.find((f) => f.kind === 'text'), { question: '3', answer: 'ready' }),
+      ans(null, { question: '4', answer: '[[1]] need, [[2]] indeed', matches: [{ from: 'need', to: '1' }, { from: 'indeed', to: '2' }] }),
+      ans(null, { question: '5', answer: 'kind, old', highlights: [{ label: 'סמן', text: 'kind' }, { label: 'סמן', text: 'old' }] }),
+    ];
+    return toolEvents(body, 'submit_answers', JSON.stringify({ task_map: [], skipped: [], sources: [], notes: '', topic: 'Friendship', answers }));
+  }
   // drag activities (H5P): words into numbered blanks, items onto named zones
   if (text.includes('[פעילות גרירה: גוררים מילים')) {
     return toolEvents(body, 'submit_answers', JSON.stringify({ task_map: [], skipped: [], sources: [], notes: '', topic: 'Volunteering', answers: [
@@ -199,7 +224,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/pdf' });
     return res.end('%PDF-1.4\n% fake story pdf for the test\n%%EOF');
   }
-  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/classe.html': 'classe.html', '/activities.html': 'activities.html', '/parts.html': 'parts.html', '/moodle-quiz.html': 'moodle-quiz.html', '/h5p-words.html': 'h5p-words.html', '/h5p-zones.html': 'h5p-zones.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
+  const file = { '/task.html': 'task.html', '/frame.html': 'frame.html', '/popup.html': 'popup.html', '/page2.html': 'page2.html', '/paged.html': 'paged.html', '/many.html': 'many.html', '/tabs.html': 'tabs.html', '/cet-history.html': 'cet-history.html', '/classe.html': 'classe.html', '/activities.html': 'activities.html', '/parts.html': 'parts.html', '/moodle-quiz.html': 'moodle-quiz.html', '/h5p-words.html': 'h5p-words.html', '/h5p-zones.html': 'h5p-zones.html', '/moodle-types.html': 'moodle-types.html', '/h5p-types.html': 'h5p-types.html', '/genially.html': 'genially.html', '/drag.html': 'drag.html' }[url.pathname];
   if (!file) return res.writeHead(404).end();
   let html = readFileSync(resolve('tests/fixtures', file), 'utf8');
   // the iframe is served from another origin (127.0.0.1 vs localhost) to test cross-origin frames
@@ -757,6 +782,57 @@ try {
     await hp.close();
   }
   console.log('✓ H5P drag activities: words into numbered blanks (keyboard) and items onto zones (mouse drag)');
+
+  // real Moodle question markup: multichoice (aria-labelledby), truefalse, match, gapselect, ddwtos (keyboard)
+  const mt = await ctx.newPage();
+  await mt.goto(`http://localhost:${port}/moodle-types.html`);
+  await mt.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await mt.keyboard.press('Alt+Shift+A');
+  await mt.waitForSelector('#sab-helper-host >> .rl >> text=/\\d+\\/\\d+/', { timeout: 30000 });
+  const mtText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
+  const mtFields = JSON.parse(mtText.match(/<fields>\n([\s\S]*?)\n<\/fields>/)[1]);
+  assert.deepEqual(mtFields.find((f) => f.question_text.includes('capital')).options, ['a. Paris', 'b. Rome'], 'Moodle choice texts via aria-labelledby');
+  assert.ok(mtFields.some((f) => f.question_text.includes('Question 3') && f.question_text.includes('פריט: tiny')), 'match row stem in its context');
+  assert.ok(mtFields.some((f) => f.question_text.includes('החור: Every morning I ____ to school, and at four I […] home.')), 'gap sentence in its context');
+  assert.ok(mtText.includes('The cat sat on the [[1]] near the [[2]]') && mtText.includes('mat | door | car'), 'ddwtos described');
+  assert.ok(!mtText.includes('The correct answer is'), 'feedback is not read');
+  await mt.click('#sab-helper-host >> text=/מלא הכול בדף/');
+  await mt.waitForFunction(() => document.querySelector('input.placeinput.place2').value === '2', null, { timeout: 20000 });
+  assert.deepEqual(await mt.evaluate(() => ({
+    mc: document.getElementById('q1:1_answer0').checked,
+    tf: document.getElementById('q1:2_answertrue').checked,
+    m0: document.getElementById('menuq1:3_sub0').selectedOptions[0].text,
+    m1: document.getElementById('menuq1:3_sub1').selectedOptions[0].text,
+    g1: document.getElementById('g1').selectedOptions[0].text,
+    g2: document.getElementById('g2').selectedOptions[0].text,
+    p1: document.querySelector('input.placeinput.place1').value,
+    p2: document.querySelector('input.placeinput.place2').value,
+    checks: window.__checks,
+    next: window.__next,
+  })), { mc: true, tf: true, m0: 'large', m1: 'small', g1: 'go', g2: 'come', p1: '1', p2: '2', checks: 0, next: 0 });
+  console.log('✓ Moodle types: multichoice (aria-labelledby), truefalse, match stems, gap sentences, ddwtos by keyboard; Check/Next never pressed; feedback not read');
+  await mt.close();
+
+  // real H5P markup: multichoice (Space), true/false, blanks, drag-the-words (keyboard), mark the words
+  const ht = await ctx.newPage();
+  await ht.goto(`http://localhost:${port}/h5p-types.html`);
+  await ht.waitForSelector('#sab-helper-host', { state: 'attached' });
+  await ht.keyboard.press('Alt+Shift+A');
+  await ht.waitForSelector('#sab-helper-host >> .rl >> text=/\\d+\\/\\d+/', { timeout: 30000 });
+  const htText = requests.at(-1).body.messages[0].content.map((c) => c.text ?? '').join('\n');
+  assert.ok(htText.includes('A friend in [[1]] is a friend [[2]]') && htText.includes('[פעילות סימון מילים'), 'H5P drag-the-words and mark-the-words described');
+  await ht.click('#sab-helper-host >> text=/מלא הכול בדף/');
+  await ht.waitForFunction(() => document.querySelectorAll('.h5p-word-selection [aria-selected="true"]').length === 2, null, { timeout: 20000 });
+  assert.deepEqual(await ht.evaluate(() => ({
+    mc: [...document.querySelectorAll('.h5p-multichoice .h5p-answer')].map((x) => x.getAttribute('aria-checked')),
+    tf: [...document.querySelectorAll('.h5p-true-false-answer')].map((x) => x.getAttribute('aria-checked')),
+    blank: document.querySelector('.h5p-text-input').value,
+    zones: [...document.querySelectorAll('.h5p-drag-text .h5p-dropzone')].map((z) => z.textContent.trim()),
+    marked: [...document.querySelectorAll('.h5p-word-selection [aria-selected="true"]')].map((x) => x.textContent),
+    checks: window.__checks,
+  })), { mc: ['false', 'true'], tf: ['true', 'false'], blank: 'ready', zones: ['need', 'indeed'], marked: ['kind', 'old'], checks: 0 });
+  console.log('✓ H5P types: multichoice by Space, true/false, blanks, drag-the-words by keyboard, mark the words; Check never pressed');
+  await ht.close();
 
   // a question left without an answer is completed automatically in the same solve
   skipIframeField = 1;

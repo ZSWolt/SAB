@@ -1,5 +1,5 @@
 import { PANEL_HOST_ID } from './text';
-import { draggables, dropzones } from './extract/h5p';
+import { choiceNo, draggables, dropzones, isMoodleDrop } from './extract/h5p';
 
 /**
  * Activities without answer fields (CET and similar):
@@ -109,7 +109,32 @@ export function findTextRange(text: string, doc: Document = document): Range | n
 
 /** Dropped already? The item sits in the zone, or the activity marked it as placed. */
 function placed(item: HTMLElement, zone: HTMLElement): boolean {
-  return zone.contains(item) || /dropped|placed|h5p-drag-dropped/.test(`${item.className} ${zone.className}`) || zone.getAttribute('aria-grabbed') === 'false' && zone.textContent?.includes(item.textContent ?? '\u0000') === true;
+  const word = norm(item.textContent ?? '');
+  return (
+    zone.contains(item) ||
+    /h5p-draggable--dropped|h5p-dropped|dropped/.test(item.className) ||
+    // H5P drag-text: "Drop Zone 2 contains draggable time."
+    (!!word && norm(zone.getAttribute('aria-label') ?? '').includes(`contains draggable ${word}`))
+  );
+}
+
+/**
+ * Moodle "drag and drop into text": a gap is chosen with the keyboard. Focus the gap and press Space
+ * (it cycles through the choices) until the hidden input of that gap holds the wanted choice.
+ */
+async function moodleChoose(zone: HTMLElement, item: HTMLElement): Promise<boolean> {
+  const want = choiceNo(item);
+  const place = (zone.getAttribute('class') ?? '').match(/(?:^|\s)place(\d+)/)?.[1];
+  const que = zone.closest('.que');
+  const input = place ? que?.querySelector<HTMLInputElement>(`input.placeinput.place${place}`) : null;
+  if (!input || !Number.isFinite(want)) return false;
+  const total = que?.querySelectorAll('.draghomes .draghome, .answercontainer .draghome').length ?? 10;
+  zone.focus?.();
+  for (let i = 0; i <= total + 1 && Number(input.value) !== want; i++) {
+    key(zone, ' ');
+    await sleep(60);
+  }
+  return Number(input.value) === want;
 }
 
 function key(el: Element, k: string) {
@@ -167,7 +192,7 @@ export async function runActivity(act: { matches?: { from: string; to: string }[
       out.misses.push(!item ? m.from : m.to);
       continue;
     }
-    if (await dropInto(item, zone)) out.done++;
+    if (await (isMoodleDrop(zone) ? moodleChoose(zone, item) : dropInto(item, zone))) out.done++;
     else out.misses.push(`${m.from} → ${m.to}`);
   }
   for (const m of zones.length && items.length ? [] : act.matches ?? []) {
@@ -188,6 +213,29 @@ export async function runActivity(act: { matches?: { from: string; to: string }[
   // marking: one category at a time (its color button), then each of its sentences
   const byLabel = new Map<string, string[]>();
   for (const h of act.highlights ?? []) byLabel.set(h.label, [...(byLabel.get(h.label) ?? []), h.text]);
+  // Mark the Words (H5P): no color buttons, just click each word in the text
+  const markBox = doc.querySelector('.h5p-mark-the-words, .h5p-word-selection, [data-sab-markwords]');
+  if (markBox && !doc.querySelector('.cat, [class*="legend" i]')) {
+    const words = Array.from(markBox.querySelectorAll<HTMLElement>('[aria-selected]'));
+    for (const t of [...byLabel.values()].flat()) {
+      out.total++;
+      const w = words.find((x) => norm(x.textContent ?? '') === norm(t) && x.getAttribute('aria-selected') !== 'true');
+      if (!w) {
+        out.misses.push(t);
+        continue;
+      }
+      press(w);
+      await sleep(80);
+      if (w.getAttribute('aria-selected') !== 'true') {
+        w.focus?.();
+        key(w, 'Enter');
+        await sleep(80);
+      }
+      if (w.getAttribute('aria-selected') === 'true') out.done++;
+      else out.misses.push(t);
+    }
+    return out;
+  }
   for (const [label, texts] of byLabel) {
     out.total += texts.length;
     const btn = findByText(label, doc);

@@ -178,3 +178,19 @@ describe('privacy, terms, support and footers are not read', () => {
     expect(findDocuments().map((d) => d.title)).toEqual(['הסיפור (PDF)']);
   });
 });
+
+describe('Moodle question markup', () => {
+  it('choice texts from aria-labelledby, and the match stem in each select context', () => {
+    page(`<div class="que multichoice"><div class="info"><h3 class="no">Question 1</h3></div><div class="qtext">Pick one</div>
+      <div class="answer"><div><input type="radio" name="a" id="x0" aria-labelledby="x0_label"><div id="x0_label" data-region="answer-label"><span class="answernumber">a. </span><div>Paris</div></div></div>
+      <div><input type="radio" name="a" id="x1" aria-labelledby="x1_label"><div id="x1_label" data-region="answer-label"><span class="answernumber">b. </span><div>Rome</div></div></div></div></div>
+      <div class="que match"><div class="info"><h3 class="no">Question 2</h3></div><div class="qtext">Match</div><table class="answer"><tbody>
+      <tr><td class="text">big</td><td class="control"><select><option>Choose</option><option>large</option></select></td></tr>
+      <tr><td class="text">tiny</td><td class="control"><select><option>Choose</option><option>small</option></select></td></tr></tbody></table></div>`);
+    const fields = extractFrame().fields;
+    expect(fields[0].options).toEqual(['a. Paris', 'b. Rome']);
+    expect(fields[0].context).toContain('Question 1');
+    expect(fields[2].context).toContain('פריט: tiny');
+    expect(fields[2].context).toContain('Question 2');
+  });
+});

@@ -12,8 +12,12 @@ const WIDGET_HOST = /intercom|zendesk|zdassets|tawk\.to|crisp\.chat|livechat|hot
 const hasFields = (el: Element) => !!el.querySelector('input, textarea, select, [contenteditable="true"], [data-sab-id], [data-sab-group]');
 
 /** True for an element whose whole content can be skipped. */
+/** Feedback and solutions shown after checking (Moodle / H5P): not what the student wrote. */
+const FEEDBACK = /(^|\s)(rightanswer|specificfeedback|generalfeedback|numpartscorrect|h5p-correct-answer|h5p-drag-show-solution-container|h5p-feedback-dialog|validationerror)(\s|$)/;
+
 export function isBoilerplate(el: Element): boolean {
   const tag = el.tagName;
+  if (FEEDBACK.test(el.getAttribute('class') ?? '')) return true;
   const sig = `${el.id} ${el.getAttribute('class') ?? ''} ${el.getAttribute('aria-label') ?? ''}`;
   // footers and cookie banners: always (their sign-up boxes are not questions either)
   if (tag === 'FOOTER' || el.getAttribute('role') === 'contentinfo' || /cookie|consent/i.test(sig)) return true;

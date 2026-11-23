@@ -1,0 +1,48 @@
+<!doctype html><html lang="en" dir="ltr"><head><meta charset="utf-8"><title>Unit 4: Friendship</title></head>
+<body>
+  <div class="h5p-content">
+    <div class="h5p-question h5p-multichoice"><div class="h5p-question-introduction"><p>How many friends does Sam have?</p></div>
+      <div class="h5p-question-content"><ul class="h5p-answers h5p-radio">
+        <li class="h5p-answer" role="radio" aria-checked="false" tabindex="0" data-id="0"><div class="h5p-alternative-container"><span class="h5p-alternative-inner">One</span></div></li>
+        <li class="h5p-answer" role="radio" aria-checked="false" tabindex="-1" data-id="1"><div class="h5p-alternative-container"><span class="h5p-alternative-inner">Two</span></div></li>
+      </ul></div></div>
+    <div class="h5p-question h5p-true-false"><div class="h5p-question-introduction"><p>Sam and Dan met at school.</p></div>
+      <div class="h5p-question-content"><div class="h5p-true-false-answers">
+        <div class="h5p-true-false-answer" role="radio" aria-checked="false" tabindex="0">True</div>
+        <div class="h5p-true-false-answer" role="radio" aria-checked="false" tabindex="0">False</div>
+      </div></div></div>
+    <div class="h5p-question h5p-blanks"><div class="h5p-question-introduction"><p>Fill in the missing word.</p></div>
+      <div class="h5p-question-content"><div role="group"><p>Good friends are always <span class="h5p-input-wrapper"><input type="text" class="h5p-text-input" autocomplete="off"></span> to help.</p></div></div></div>
+    <div class="h5p-question h5p-drag-text"><div class="h5p-question-introduction"><p>Drag the words into the correct boxes.</p></div>
+      <div class="h5p-question-content"><div class="h5p-drag-inner"><div class="h5p-drag-task">
+        <div class="h5p-drag-droppable-words"><div class="h5p-drag-droppable-words-container"><p>A friend in <span class="h5p-dropzone" tabindex="-1" aria-label="Drop Zone 1."></span> is a friend <span class="h5p-dropzone" tabindex="-1" aria-label="Drop Zone 2."></span>.</p></div></div>
+        <div class="h5p-drag-draggables-container"><div class="h5p-draggable" tabindex="-1" aria-grabbed="false">indeed</div><div class="h5p-draggable" tabindex="-1" aria-grabbed="false">need</div></div>
+      </div></div></div></div>
+    <div class="h5p-question h5p-mark-the-words"><div class="h5p-question-introduction"><p>Click all the adjectives.</p></div>
+      <div class="h5p-question-content"><div class="h5p-word-selection" role="listbox"><p><span role="option" aria-selected="false">The</span> <span role="option" aria-selected="false">kind</span> <span role="option" aria-selected="false">boy</span> <span role="option" aria-selected="false">helped</span> <span role="option" aria-selected="false">his</span> <span role="option" aria-selected="false">old</span> <span role="option" aria-selected="false">friend</span>.</p></div></div></div>
+    <div class="h5p-question-buttons"><button class="h5p-joubelui-button h5p-question-check-answer" aria-label="Check the answers. The responses will be marked as correct, incorrect, or unanswered." onclick="window.__checks++">Check</button></div>
+  </div>
+  <script>
+    window.__checks = 0;
+    // multiple choice answers like H5P: keyboard Space selects (clicks are ignored here on purpose)
+    document.querySelectorAll('.h5p-multichoice .h5p-answer').forEach((li) => li.addEventListener('keydown', (e) => {
+      if (e.key !== ' ') return;
+      document.querySelectorAll('.h5p-multichoice .h5p-answer').forEach((x) => x.setAttribute('aria-checked', 'false'));
+      li.setAttribute('aria-checked', 'true');
+    }));
+    document.querySelectorAll('.h5p-true-false-answer').forEach((a) => a.addEventListener('click', () => {
+      document.querySelectorAll('.h5p-true-false-answer').forEach((x) => x.setAttribute('aria-checked', 'false'));
+      a.setAttribute('aria-checked', 'true');
+    }));
+    // drag the words by keyboard: Enter on a word grabs it, Enter on a drop zone drops it
+    let grabbed = null;
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const w = e.target.closest('.h5p-draggable'); const z = e.target.closest('.h5p-dropzone');
+      if (w) { grabbed = w; w.setAttribute('aria-grabbed', 'true'); }
+      else if (z && grabbed) { z.appendChild(grabbed); grabbed.classList.add('h5p-draggable--dropped'); grabbed.setAttribute('aria-grabbed', 'false'); z.setAttribute('aria-label', z.getAttribute('aria-label').replace('.', ' contains draggable ' + grabbed.textContent + '.')); grabbed = null; }
+    });
+    // mark the words: click toggles
+    document.querySelectorAll('.h5p-word-selection [aria-selected]').forEach((w) => w.addEventListener('click', () => w.setAttribute('aria-selected', String(w.getAttribute('aria-selected') !== 'true'))));
+  </script>
+</body></html>

@@ -1,0 +1,42 @@
+<!doctype html><html lang="en" dir="ltr"><head><meta charset="utf-8"><title>Quiz: Grammar check</title></head>
+<body id="page-mod-quiz-attempt" class="path-mod-quiz">
+<form id="responseform" action="#" onsubmit="return false">
+  <div class="que multichoice" id="question-1-1"><div class="info"><h3 class="no">Question <span class="qno">1</span></h3></div>
+    <div class="content"><div class="formulation"><div class="qtext"><p>What is the capital of France?</p></div>
+      <fieldset class="ablock"><legend class="prompt h6 font-weight-normal sr-only">Select one:</legend><div class="answer">
+        <div class="r0"><input type="radio" name="q1:1_answer" value="0" id="q1:1_answer0" aria-labelledby="q1:1_answer0_label"><div id="q1:1_answer0_label" data-region="answer-label"><span class="answernumber">a. </span><div class="flex-fill ml-1">Paris</div></div></div>
+        <div class="r1"><input type="radio" name="q1:1_answer" value="1" id="q1:1_answer1" aria-labelledby="q1:1_answer1_label"><div id="q1:1_answer1_label" data-region="answer-label"><span class="answernumber">b. </span><div class="flex-fill ml-1">Rome</div></div></div>
+      </div></fieldset></div>
+      <div class="outcome"><div class="feedback"><div class="rightanswer">The correct answer is: Paris</div></div></div>
+      <input type="submit" class="submit btn btn-secondary" name="q1:1_-submit" value="Check" onclick="window.__checks++"></div></div>
+  <div class="que truefalse" id="question-1-2"><div class="info"><h3 class="no">Question <span class="qno">2</span></h3></div>
+    <div class="content"><div class="qtext"><p>The sun is a star.</p></div><div class="ablock"><div class="answer">
+      <div class="r0"><input type="radio" name="q1:2_answer" value="1" id="q1:2_answertrue"><label for="q1:2_answertrue" class="ml-1">True</label></div>
+      <div class="r1"><input type="radio" name="q1:2_answer" value="0" id="q1:2_answerfalse"><label for="q1:2_answerfalse" class="ml-1">False</label></div>
+    </div></div></div></div>
+  <div class="que match" id="question-1-3"><div class="info"><h3 class="no">Question <span class="qno">3</span></h3></div>
+    <div class="content"><div class="qtext"><p>Match each word to its meaning.</p></div><div class="ablock"><table class="answer"><tbody>
+      <tr class="r0"><td class="text"><p>big</p></td><td class="control"><label class="accesshide" for="menuq1:3_sub0">Answer 1</label><select class="custom-select ml-1" name="q1:3_sub0" id="menuq1:3_sub0"><option value="0">Choose...</option><option value="1">large</option><option value="2">small</option></select></td></tr>
+      <tr class="r1"><td class="text"><p>tiny</p></td><td class="control"><label class="accesshide" for="menuq1:3_sub1">Answer 2</label><select class="custom-select ml-1" name="q1:3_sub1" id="menuq1:3_sub1"><option value="0">Choose...</option><option value="1">large</option><option value="2">small</option></select></td></tr>
+    </tbody></table></div></div></div>
+  <div class="que gapselect" id="question-1-4"><div class="info"><h3 class="no">Question <span class="qno">4</span></h3></div>
+    <div class="content"><div class="qtext"><p>Every morning I <select name="q1:4_p1" id="g1"><option value="">&nbsp;</option><option value="1">go</option><option value="2">come</option></select> to school, and at four I <select name="q1:4_p2" id="g2"><option value="">&nbsp;</option><option value="1">go</option><option value="2">come</option></select> home.</p></div></div></div>
+  <div class="que ddwtos" id="question-1-5"><div class="info"><h3 class="no">Question <span class="qno">5</span></h3></div>
+    <div class="content"><div class="qtext"><p>The cat sat on the <span class="place1 drop active group1" tabindex="0">&nbsp;<span class="accesshide">blank 1</span></span> near the <span class="place2 drop active group1" tabindex="0">&nbsp;<span class="accesshide">blank 2</span></span>.</p></div>
+      <div class="answercontainer"><div class="draghomes draggrouphomes1"><span class="draghome user-select-none choice1 group1">mat</span><span class="draghome user-select-none choice2 group1">door</span><span class="draghome user-select-none choice3 group1">car</span></div></div>
+      <input type="hidden" class="placeinput place1 group1" name="q1:5_p1" value="0"><input type="hidden" class="placeinput place2 group1" name="q1:5_p2" value="0"></div></div>
+  <div class="submitbtns"><input type="submit" name="next" id="mod_quiz-next-nav" class="mod_quiz-next-nav btn btn-primary" value="Next page" onclick="window.__next++"></div>
+</form>
+<script>
+  window.__checks = 0; window.__next = 0;
+  // like Moodle ddwtos keyboard: Space on a gap cycles through the choices and stores the choice number
+  const names = { 1: 'mat', 2: 'door', 3: 'car' };
+  document.querySelectorAll('.que.ddwtos span.drop').forEach((drop) => drop.addEventListener('keydown', (e) => {
+    if (e.key !== ' ' && e.key !== 'ArrowRight') return;
+    const place = drop.className.match(/place(\d+)/)[1];
+    const input = document.querySelector('input.placeinput.place' + place);
+    input.value = String((Number(input.value) % 3) + 1);
+    drop.firstChild.textContent = names[input.value];
+  }));
+</script>
+</body></html>

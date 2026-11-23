@@ -155,6 +155,11 @@ function pickOptions(group: FieldGroup, wanted: string): FillOutcome & { picked?
         el.checked = true;
         fire(el, 'input', 'change');
       }
+      // H5P answers (li role=radio/checkbox) listen to the keyboard too: Space selects
+      if (!(el instanceof HTMLInputElement) && !isChecked(el)) {
+        el.focus?.();
+        for (const type of ['keydown', 'keyup']) el.dispatchEvent(new KeyboardEvent(type, { key: ' ', code: 'Space', keyCode: 32, which: 32, bubbles: true, cancelable: true }));
+      }
       undoStack.push({
         restore: () => {
           if (group.kind === 'radio' && prevChecked.length) prevChecked[0].click();

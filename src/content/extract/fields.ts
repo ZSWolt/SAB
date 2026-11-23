@@ -53,6 +53,12 @@ function existingId(els: Element[]): string | null {
 export function optionLabel(el: Element): string {
   const aria = el.getAttribute('aria-label');
   if (aria?.trim()) return normalize(aria);
+  // Moodle multichoice: the choice text is a div[data-region="answer-label"] linked by aria-labelledby
+  const by = (el.getAttribute('aria-labelledby') ?? '').split(/\s+/).filter((id) => id && id !== el.id);
+  if (by.length) {
+    const t = by.map((id) => el.ownerDocument.getElementById(id)).filter((x): x is HTMLElement => !!x).map((x) => getText(x)).join(' ').trim();
+    if (t) return t.replace(/\s+/g, ' ').trim();
+  }
   const dataValue = el.getAttribute('data-value');
   if (dataValue?.trim()) return normalize(dataValue);
   if (el instanceof HTMLInputElement) {
@@ -189,8 +195,41 @@ function belongsOnlyTo(container: Element, id: string): boolean {
 }
 
 /** The text of the question a field belongs to. */
+/**
+ * Moodle question (.que): the question number ("Question 3"), the question text, and for a field
+ * that is one of several in the question, its own part: the stem of a match row, or the sentence
+ * around a gap (gapselect / cloze / inline short answer) with the gap shown as ____.
+ */
+function moodleContext(group: FieldGroup, base: Element): string | null {
+  const que = base.closest('.que');
+  if (!que) return null;
+  const no = que.querySelector('.info .no, .qno');
+  const qtext = que.querySelector('.qtext');
+  const parts: string[] = [];
+  if (no) parts.push(normalize(getText(no)));
+  const ids = new Set(group.elements);
+  const inText = qtext && group.elements.some((e) => qtext.contains(e));
+  if (qtext && !inText) parts.push(getText(qtext, { skipHidden: true }).slice(0, 1500));
+  const row = base.closest('tr');
+  const stem = row?.querySelector('td.text');
+  if (stem) parts.push(`פריט: ${getText(stem)}`);
+  if (inText) {
+    // the sentence around the gap: the block that holds it, with this gap as ____ and other gaps as […]
+    const block = (group.elements[0].closest('p, li, td, div') ?? qtext) as HTMLElement;
+    const copy = block.cloneNode(true) as HTMLElement;
+    const live = Array.from(block.querySelectorAll('input, select, textarea, [contenteditable]'));
+    const cloned = Array.from(copy.querySelectorAll('input, select, textarea, [contenteditable]'));
+    cloned.forEach((c, i) => c.replaceWith(copy.ownerDocument.createTextNode(ids.has(live[i]) ? ' ____ ' : ' […] ')));
+    parts.push(getText(qtext!, { skipHidden: true, exclude: (x) => x.tagName === 'SELECT' }).slice(0, 800));
+    parts.push(`החור: ${normalize(copy.textContent ?? '')}`);
+  }
+  return parts.filter(Boolean).join('\n');
+}
+
 export function fieldContext(group: FieldGroup): string {
   const base = commonAncestor(group.elements);
+  const moodle = moodleContext(group, base);
+  if (moodle && moodle.length >= 10) return moodle.slice(0, 2500);
 
   // A known per-question container (Google Forms list item, Moodle .que, fieldset...) holding only this field.
   const known = base.closest(QUESTION_CONTAINERS);
